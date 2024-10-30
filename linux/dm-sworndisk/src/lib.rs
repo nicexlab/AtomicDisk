@@ -287,7 +287,9 @@ struct RawDisk {
 impl RawDisk {
     /// Constructs a `RawDisk`.
     fn open(path: &CStr) -> Result<Self> {
+        kernel::pr_info!("try to open raw disk: {}\n", path.to_str().unwrap());
         let block_device = HostBlockDevice::open(path)?;
+        kernel::pr_info!("open raw disk: {}\n", path.to_str().unwrap());
         let region = block_device.region();
         Ok(Self {
             device: Arc::new(Mutex::new(block_device)),

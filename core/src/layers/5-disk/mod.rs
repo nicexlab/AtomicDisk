@@ -31,7 +31,7 @@
 //! }
 //! ```
 
-mod bio;
+pub mod bio;
 mod block_alloc;
 mod data_buf;
 mod sworndisk;

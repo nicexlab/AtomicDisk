@@ -22,6 +22,7 @@ postcard = "=1.0.6"
 serde = { version = "=1.0.188", default-features = false, features = ["alloc", "derive"] }
 spin = { version = "0.9.8", optional = true }
 static_assertions = "1.1.0"
+rdrand = { version = "0.8", optional = true }
 
 sgx_tstd = { git = "https://github.com/apache/teaclave-sgx-sdk.git", features = ["backtrace", "thread"], optional = true }
 sgx_rand = { git = "https://github.com/apache/teaclave-sgx-sdk.git", optional = true }

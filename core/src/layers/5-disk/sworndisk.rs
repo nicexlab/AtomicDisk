@@ -110,6 +110,7 @@ impl<D: BlockSet + 'static> SwornDisk<D> {
         root_key: Key,
         sync_id_store: Option<Arc<dyn SyncIdStore>>,
     ) -> Result<Self> {
+        let disk = disk.subset(0..disk.nblocks() * 1 / 10)?;
         let data_disk = Self::subdisk_for_data(&disk)?;
         let lsm_tree_disk = Self::subdisk_for_logical_block_table(&disk)?;
 

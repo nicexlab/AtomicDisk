@@ -115,7 +115,7 @@ impl BioReq {
     }
 
     /// Access the mutable buffers with a closure.
-    pub(super) fn access_mut_bufs_with<F, R>(&self, mut f: F) -> R
+    pub fn access_mut_bufs_with<F, R>(&self, mut f: F) -> R
     where
         F: FnMut(&mut [BlockBuf]) -> R,
     {

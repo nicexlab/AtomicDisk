@@ -29,6 +29,8 @@
 mod error;
 mod layers;
 mod os;
+mod pfs;
+mod pfs_disk;
 mod prelude;
 mod tx;
 mod util;
