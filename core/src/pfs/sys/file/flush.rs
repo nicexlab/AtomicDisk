@@ -21,6 +21,7 @@ use crate::pfs::sys::host::{self, HostFs, RecoveryFile};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
 use crate::{bail, ensure, eos};
+use log::error;
 use std::vec::Vec;
 
 impl FileInner {
@@ -52,6 +53,7 @@ impl FileInner {
 
             self.update_nodes().map_err(|error| {
                 self.clear_update_flag();
+                error!("update nodes failed: {:?}", error);
                 self.set_file_status(FileStatus::FlushError);
                 error
             })?;

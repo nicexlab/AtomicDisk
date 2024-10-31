@@ -501,3 +501,126 @@ pub enum CloseMode {
     Import,
     Export,
 }
+
+mod test {
+    use std::sync::Once;
+
+    use crate::pfs::sys::host::HostFs;
+
+    use super::*;
+
+    static INIT_LOG: Once = Once::new();
+
+    fn init_logger() {
+        INIT_LOG.call_once(|| {
+            env_logger::builder()
+                .is_test(true)
+                .filter_level(log::LevelFilter::Debug)
+                .try_init()
+                .unwrap();
+        });
+    }
+
+    #[test]
+    fn simple_read_write() {
+        let file_path = Path::new("test.data");
+        let _ = std::fs::File::create(file_path).unwrap();
+        let opts = OpenOptions::new().read(false).write(true).append(false);
+        let file = ProtectedFile::open(
+            file_path,
+            &opts,
+            &OpenMode::UserKey(AeadKey::default()),
+            None,
+        )
+        .unwrap();
+        file.write(b"hello").unwrap();
+        file.flush().unwrap();
+
+        drop(file);
+        let opts = OpenOptions::new().read(true).write(false).append(false);
+        let file = ProtectedFile::open(
+            file_path,
+            &opts,
+            &OpenMode::UserKey(AeadKey::default()),
+            None,
+        )
+        .unwrap();
+        let mut read_buffer = vec![0u8; 5];
+        file.read(&mut read_buffer).unwrap();
+        assert_eq!(read_buffer, b"hello");
+    }
+
+    #[test]
+    fn sync_test() {
+        init_logger();
+        let file_path = Path::new("test.data");
+        let _ = std::fs::File::create(file_path).unwrap();
+        let opts = OpenOptions::new().read(false).write(true);
+        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
+        let data = b"hello";
+        file.write(0, data).unwrap();
+        file.flush().unwrap();
+
+        let data = b"world";
+        file.write(0, data).unwrap();
+        file.flush().unwrap();
+
+        drop(file);
+        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
+        let mut read_buffer = vec![0u8; 5];
+        file.read(0, &mut read_buffer).unwrap();
+        assert_eq!(read_buffer, b"world");
+    }
+
+    #[test]
+    fn meta_sync() {
+        init_logger();
+        let file_path = Path::new("test.data");
+        let _ = std::fs::File::create(file_path).unwrap();
+        let opts = OpenOptions::new().read(false).write(true).append(true);
+        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
+
+        let mut meta = MetadataInfo::new();
+        meta.set_update_flag(1);
+        meta.write_to_disk(&mut file).unwrap();
+        file.flush().unwrap();
+
+        meta.set_update_flag(0);
+        meta.write_to_disk(&mut file).unwrap();
+        file.flush().unwrap();
+
+        drop(file);
+        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
+        let mut meta = MetadataInfo::new();
+        meta.read_from_disk(&mut file).unwrap();
+        assert_eq!(meta.node.metadata.plaintext.update_flag, 0);
+    }
+
+    #[test]
+    fn multiple_block_write() {
+        init_logger();
+        let file_path = Path::new("test.data");
+        let _ = std::fs::File::create(file_path).unwrap();
+
+        //  let key = AeadKey::default();
+        let opts = OpenOptions::new().read(false).write(false).append(true);
+        let file = ProtectedFile::open(file_path, &opts, &OpenMode::IntegrityOnly, None).unwrap();
+
+        let block_size = 4 * 1024;
+        let block_number = 1;
+        let write_buffer = vec![1u8; block_size];
+        for _ in 0..block_number {
+            file.write(&write_buffer).unwrap();
+        }
+        file.flush().unwrap();
+
+        let opts = OpenOptions::new().read(true).write(false).append(false);
+        let file = ProtectedFile::open(file_path, &opts, &OpenMode::IntegrityOnly, None).unwrap();
+
+        let mut read_buffer = vec![0u8; block_size];
+        for _ in 0..block_number {
+            file.read(&mut read_buffer).unwrap();
+            assert_eq!(read_buffer, vec![1u8; block_size]);
+        }
+    }
+}

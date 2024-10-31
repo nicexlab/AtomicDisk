@@ -238,7 +238,7 @@ impl FileInner {
         ensure!(name_len > 0, eos!(EINVAL));
         ensure!(name_len < FILENAME_MAX_LEN - 1, eos!(ENAMETOOLONG));
 
-        opts.check()?;
+        // opts.check()?;
         mode.check()?;
 
         // if let Some(key) = mode.import_key() {
