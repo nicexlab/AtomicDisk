@@ -17,7 +17,7 @@
 
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
 use crate::pfs::sys::file::{FileInner, FileStatus};
-use crate::pfs::sys::host::{self, HostFs, RecoveryFile};
+use crate::pfs::sys::host::{self, HostFs, RawRecoveryFile, RecoveryFile};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
 use crate::{bail, ensure, eos};

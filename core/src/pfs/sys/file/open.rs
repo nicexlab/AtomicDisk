@@ -20,7 +20,7 @@ use crate::pfs::sys::error::{
     FsError, FsResult, SgxStatus, EACCES, EINVAL, ENAMETOOLONG, ENOENT, ENOTSUP,
 };
 use crate::pfs::sys::file::{FileInner, FileStatus, OpenMode, OpenOptions};
-use crate::pfs::sys::host::{self, HostFile, HostFs};
+use crate::pfs::sys::host::{self, HostFile, HostFs, RawFile};
 use crate::pfs::sys::keys::{FsKeyGen, RestoreKey};
 use crate::pfs::sys::metadata::MetadataInfo;
 use crate::pfs::sys::metadata::{

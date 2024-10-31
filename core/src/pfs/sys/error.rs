@@ -20,9 +20,9 @@ use std::fmt;
 #[cfg(feature = "ufs")]
 use std::io::ErrorKind;
 use std::io::{Error as IoError, ErrorKind};
-
+pub type OsError = i32;
 use crate::impl_enum;
-
+pub type OsResult<T = ()> = std::result::Result<T, OsError>;
 pub type FsResult<T = ()> = std::result::Result<T, FsError>;
 pub const ENOENT: i32 = 2;
 pub const EACCES: i32 = 13;

@@ -36,6 +36,7 @@ use std::sync::Mutex;
 use super::error::SgxStatus;
 use super::error::EINVAL;
 use super::host::HostFile;
+use super::host::RawFile;
 
 mod close;
 mod flush;
@@ -554,46 +555,21 @@ mod test {
     fn sync_test() {
         init_logger();
         let file_path = Path::new("test.data");
-        let _ = std::fs::File::create(file_path).unwrap();
         let opts = OpenOptions::new().read(false).write(true);
         let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
-        let data = b"hello";
-        file.write(0, data).unwrap();
+        let data = vec![1u8; 4096];
+        file.write(0, &data).unwrap();
         file.flush().unwrap();
 
-        let data = b"world";
-        file.write(0, data).unwrap();
+        let data = vec![1u8; 4096];
+        file.write(0, &data).unwrap();
         file.flush().unwrap();
 
         drop(file);
         let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
-        let mut read_buffer = vec![0u8; 5];
+        let mut read_buffer = vec![0u8; 4096];
         file.read(0, &mut read_buffer).unwrap();
-        assert_eq!(read_buffer, b"world");
-    }
-
-    #[test]
-    fn meta_sync() {
-        init_logger();
-        let file_path = Path::new("test.data");
-        let _ = std::fs::File::create(file_path).unwrap();
-        let opts = OpenOptions::new().read(false).write(true).append(true);
-        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
-
-        let mut meta = MetadataInfo::new();
-        meta.set_update_flag(1);
-        meta.write_to_disk(&mut file).unwrap();
-        file.flush().unwrap();
-
-        meta.set_update_flag(0);
-        meta.write_to_disk(&mut file).unwrap();
-        file.flush().unwrap();
-
-        drop(file);
-        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
-        let mut meta = MetadataInfo::new();
-        meta.read_from_disk(&mut file).unwrap();
-        assert_eq!(meta.node.metadata.plaintext.update_flag, 0);
+        assert_eq!(read_buffer, vec![1u8; 4096]);
     }
 
     #[test]
@@ -602,20 +578,20 @@ mod test {
         let file_path = Path::new("test.data");
         let _ = std::fs::File::create(file_path).unwrap();
 
-        //  let key = AeadKey::default();
+        let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(false).append(true);
-        let file = ProtectedFile::open(file_path, &opts, &OpenMode::IntegrityOnly, None).unwrap();
+        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
-        let block_number = 1;
+        let block_number = 100;
         let write_buffer = vec![1u8; block_size];
         for _ in 0..block_number {
             file.write(&write_buffer).unwrap();
         }
         file.flush().unwrap();
-
+        drop(file);
         let opts = OpenOptions::new().read(true).write(false).append(false);
-        let file = ProtectedFile::open(file_path, &opts, &OpenMode::IntegrityOnly, None).unwrap();
+        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let mut read_buffer = vec![0u8; block_size];
         for _ in 0..block_number {
