@@ -599,4 +599,38 @@ mod test {
             assert_eq!(read_buffer, vec![1u8; block_size]);
         }
     }
+
+    #[test]
+    fn seek_and_read() {
+        init_logger();
+        let file_path = Path::new("test.data");
+        let _ = std::fs::File::create(file_path).unwrap();
+
+        let key = AeadKey::default();
+        let opts = OpenOptions::new().read(false).write(true);
+        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+
+        let block_size = 4 * 1024;
+        let block_number = 100;
+        let write_buffer = vec![1u8; block_size];
+        for i in 0..block_number {
+            file.write_at(&write_buffer, i * block_size as u64).unwrap();
+        }
+        file.flush().unwrap();
+
+        let pos = SeekFrom::Start(3072 as u64);
+
+        let write_buffer = vec![2u8; block_size];
+        file.seek(pos).unwrap();
+        file.write(&write_buffer).unwrap();
+        file.flush().unwrap();
+        drop(file);
+        let opts = OpenOptions::new().read(true).write(false);
+        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+
+        let mut read_buffer = vec![0u8; block_size];
+        file.seek(pos).unwrap();
+        file.read(&mut read_buffer).unwrap();
+        assert_eq!(read_buffer, vec![2u8; block_size]);
+    }
 }

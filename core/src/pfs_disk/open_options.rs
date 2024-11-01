@@ -7,6 +7,7 @@ use super::{PfsDisk, PFS_INNER_OFFSET};
 use crate::os::Mutex;
 use crate::pfs::fs::OpenOptions as PfsOpenOptions;
 use crate::pfs::fs::SgxFile as PfsFile;
+use crate::AeadKey;
 use crate::{prelude::*, Errno};
 /// Options that are used to configure how a PFS disk is opened.
 pub struct OpenOptions {
@@ -155,10 +156,9 @@ fn open_pfs_file<P: AsRef<Path>>(path: P) -> Result<PfsFile> {
     let ret = PfsOpenOptions::new()
         .read(true)
         .update(true)
-        .open(path.as_ref())
-        //  .map_err(|e| e.into())
-        .unwrap();
-    Ok(ret)
+        .open_with_key(path.as_ref(), AeadKey::default())
+        .map_err(|e| e.raw_os_error().unwrap().into());
+    ret
 }
 
 /// Create a PFS file with read and write permissions. The length of the
@@ -167,10 +167,9 @@ fn create_pfs_file<P: AsRef<Path>>(path: P) -> Result<PfsFile> {
     let ret = PfsOpenOptions::new()
         .write(true)
         .update(true)
-        .open(path.as_ref())
-        .unwrap();
-    Ok(ret)
-    //    .map_err(|e| e.into())
+        .open_with_key(path.as_ref(), AeadKey::default())
+        .map_err(|e| e.raw_os_error().unwrap().into());
+    ret
 }
 
 fn write_zeros(pfs_file: &mut PfsFile, begin: usize, end: usize) {

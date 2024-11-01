@@ -26,9 +26,8 @@ mod node;
 use crate::pfs::sys::error::FsError;
 use crate::pfs::sys::file::{self as file_imp, ProtectedFile};
 use crate::{AeadKey, AeadMac};
-
 use std::boxed::Box;
-use std::io::{Result, SeekFrom};
+use std::io::{self, SeekFrom};
 use std::mem::ManuallyDrop;
 use std::path::Path;
 
@@ -70,7 +69,7 @@ impl OpenOptions {
     }
 
     #[allow(dead_code)]
-    pub fn check(&self) -> Result<()> {
+    pub fn check(&self) -> io::Result<()> {
         self.0.check().map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -95,7 +94,7 @@ impl SgxFile {
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,
-    ) -> Result<SgxFile> {
+    ) -> io::Result<SgxFile> {
         ProtectedFile::open(path, &opts.0, &encrypt_mode.into(), cache_size)
             .map_err(|e| {
                 e.set_errno();
@@ -105,7 +104,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
+    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.file.read(buf).map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -113,7 +112,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
         self.file.read_at(buf, offset).map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -121,7 +120,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn write(&self, buf: &[u8]) -> Result<usize> {
+    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
         self.file.write(buf).map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -129,7 +128,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn write_at(&self, buf: &[u8], offset: u64) -> Result<usize> {
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
         self.file.write_at(buf, offset).map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -137,7 +136,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn tell(&self) -> Result<u64> {
+    pub fn tell(&self) -> io::Result<u64> {
         self.file.tell().map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -145,7 +144,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn seek(&self, pos: SeekFrom) -> Result<u64> {
+    pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
         self.file.seek(pos).map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -153,7 +152,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn set_len(&self, size: u64) -> Result<()> {
+    pub fn set_len(&self, size: u64) -> io::Result<()> {
         self.file.set_len(size).map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -161,7 +160,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn flush(&self) -> Result<()> {
+    pub fn flush(&self) -> io::Result<()> {
         self.file.flush().map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -169,7 +168,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn file_size(&self) -> Result<u64> {
+    pub fn file_size(&self) -> io::Result<u64> {
         self.file.file_size().map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -188,7 +187,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn clear_cache(&self) -> Result<()> {
+    pub fn clear_cache(&self) -> io::Result<()> {
         self.file.clear_cache().map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -196,7 +195,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn clear_error(&self) -> Result<()> {
+    pub fn clear_error(&self) -> io::Result<()> {
         self.file.clear_error().map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -204,7 +203,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn get_mac(&self) -> Result<AeadMac> {
+    pub fn get_mac(&self) -> io::Result<AeadMac> {
         self.file.get_metadata_mac().map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -212,7 +211,7 @@ impl SgxFile {
     }
 
     #[inline]
-    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> Result<()> {
+    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> io::Result<()> {
         self.file.rename(old_name, new_name).map_err(|e| {
             e.set_errno();
             e.to_io_error()
@@ -244,7 +243,7 @@ impl Drop for SgxFile {
 }
 
 #[inline]
-pub fn remove<P: AsRef<Path>>(path: P) -> Result<()> {
+pub fn remove<P: AsRef<Path>>(path: P) -> io::Result<()> {
     ProtectedFile::remove(path).map_err(|e| {
         e.set_errno();
         e.to_io_error()

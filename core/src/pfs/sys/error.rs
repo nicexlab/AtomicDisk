@@ -21,7 +21,7 @@ use std::fmt;
 use std::io::ErrorKind;
 use std::io::{Error as IoError, ErrorKind};
 pub type OsError = i32;
-use crate::impl_enum;
+use crate::{impl_enum, Errno};
 pub type OsResult<T = ()> = std::result::Result<T, OsError>;
 pub type FsResult<T = ()> = std::result::Result<T, FsError>;
 pub const ENOENT: i32 = 2;
@@ -365,10 +365,10 @@ impl FsError {
     }
 
     #[allow(dead_code)]
-    pub fn to_errno(self) -> i32 {
+    pub fn to_errno(self) -> crate::Error {
         match self {
-            Self::SgxError(status) => status as i32,
-            Self::OsError(errno) => errno,
+            Self::SgxError(status) => crate::Error::with_msg(Errno::SgxError, status.as_str()),
+            Self::OsError(errno) => crate::Error::from(errno),
         }
     }
 }

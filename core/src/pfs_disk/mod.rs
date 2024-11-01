@@ -2,8 +2,9 @@ pub use self::open_options::OpenOptions;
 use crate::layers::disk::bio::{BioReq, BioType};
 use crate::os::Mutex;
 use crate::pfs::fs::SgxFile as PfsFile;
-use crate::prelude::*;
-use crate::Errno;
+use crate::pfs::sys::error::OsError;
+use crate::{prelude::*, BufMut};
+use crate::{BufRef, Errno};
 use std::fmt;
 use std::io::prelude::*;
 use std::io::SeekFrom;
@@ -52,6 +53,30 @@ impl PfsDisk {
     /// Returns the PFS file on the host Linux.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn read(&self, addr: usize, mut buf: BufMut) -> Result<()> {
+        if !self.can_read {
+            return_errno_with_msg!(Errno::IoFailed, "read is not allowed")
+        }
+
+        let offset = addr * BLOCK_SIZE + PFS_INNER_OFFSET;
+        let mut file = self.file.lock();
+        file.seek(SeekFrom::Start(offset as u64)).unwrap();
+        file.read(buf.as_mut_slice()).unwrap();
+        Ok(())
+    }
+
+    pub fn write(&self, addr: usize, buf: BufRef) -> Result<()> {
+        if !self.can_write {
+            return_errno_with_msg!(Errno::IoFailed, "write is not allowed")
+        }
+
+        let offset = addr * BLOCK_SIZE + PFS_INNER_OFFSET;
+        let mut file = self.file.lock();
+        file.seek(SeekFrom::Start(offset as u64)).unwrap();
+        file.write(buf.as_slice()).unwrap();
+        Ok(())
     }
 
     fn do_read(&self, req: &Arc<BioReq>) -> Result<()> {
@@ -106,12 +131,12 @@ impl PfsDisk {
         }
 
         let mut file = self.file.lock();
-        file.flush().unwrap();
+        let ret = file.flush().map_err(|e| e.raw_os_error().unwrap().into());
         // TODO: sync
-        // file.sync_data()?;
+        //file.sync_data()?;
         drop(file);
 
-        Ok(())
+        ret
     }
 
     fn get_range_in_bytes(&self, req: &Arc<BioReq>) -> Result<(usize, usize)> {
@@ -168,5 +193,46 @@ impl fmt::Debug for PfsDisk {
             .field("path", &self.path)
             .field("total_blocks", &self.total_blocks)
             .finish()
+    }
+}
+
+mod test {
+    use super::*;
+    use crate::{
+        layers::disk::bio::{BioReqBuilder, BlockBuf},
+        Buf,
+    };
+    use core::ptr::NonNull;
+
+    #[test]
+    fn test_read_write() {
+        let disk = PfsDisk::create("test.data", 100).unwrap();
+        let data_buf = vec![1u8; BLOCK_SIZE];
+        let buf = BufRef::try_from(data_buf.as_slice()).unwrap();
+        disk.write(0, buf).unwrap();
+
+        let mut read_buf = Buf::alloc(1).unwrap();
+        disk.read(0, read_buf.as_mut()).unwrap();
+        assert_eq!(read_buf.as_slice(), &[1u8; BLOCK_SIZE]);
+        std::fs::remove_file("test.data").unwrap();
+    }
+
+    #[test]
+    fn multi_block_read_write() {
+        let disk = PfsDisk::create("test.disk", 100).unwrap();
+
+        let block_count = 1000;
+        for i in 0..block_count {
+            let data_buf = vec![i as u8; BLOCK_SIZE];
+            let buf = BufRef::try_from(data_buf.as_slice()).unwrap();
+            disk.write(i, buf).unwrap();
+        }
+
+        for i in 0..block_count {
+            let mut read_buf = Buf::alloc(1).unwrap();
+            disk.read(i, read_buf.as_mut()).unwrap();
+            assert_eq!(read_buf.as_slice(), &[i as u8; BLOCK_SIZE]);
+        }
+        std::fs::remove_file("test.disk").unwrap();
     }
 }

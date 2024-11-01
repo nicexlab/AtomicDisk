@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::pfs::sys::error::{OsError, ENOENT};
+
 /// The error types used in this crate.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Errno {
@@ -31,6 +33,8 @@ pub enum Errno {
     NotBlockSizeAligned,
     /// Try lock failed.
     TryLockFailed,
+    /// Sgx error.
+    SgxError,
 }
 
 /// The error with an error type and an error message used in this crate.
@@ -63,6 +67,15 @@ impl Error {
 impl From<Errno> for Error {
     fn from(errno: Errno) -> Self {
         Error::new(errno)
+    }
+}
+
+impl From<OsError> for Error {
+    fn from(os_error: OsError) -> Self {
+        if os_error == ENOENT {
+            return Error::new(Errno::NotFound);
+        }
+        Error::new(Errno::OsSpecUnknown)
     }
 }
 

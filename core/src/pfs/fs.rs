@@ -15,15 +15,15 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use super::sgx::KeyPolicy;
 use crate::pfs::sys as fs_imp;
+use crate::prelude::Result;
 use crate::{AeadKey, AeadMac};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::path::Path;
 use std::string::String;
 use std::vec::Vec;
-
-use super::sgx::KeyPolicy;
 
 // cfg_if! {
 //     if #[cfg(feature = "tfs")] {
