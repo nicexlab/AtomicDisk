@@ -17,7 +17,8 @@
 
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
 use crate::pfs::sys::file::{FileInner, FileStatus};
-use crate::pfs::sys::host::{self, HostFs, RawRecoveryFile, RecoveryFile};
+use crate::pfs::sys::host::raw_file::RecoveryFile;
+use crate::pfs::sys::host::{self, HostFs};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
 use crate::{bail, ensure, eos};
@@ -217,7 +218,7 @@ impl FileInner {
     #[inline]
     fn write_recovery_file(&mut self) -> FsResult {
         self.write_recovery_file_node().map_err(|error| {
-            let _ = host::remove(&self.recovery_path);
+            let _ = host::raw_file::remove(&self.recovery_path);
             error
         })
     }

@@ -20,7 +20,7 @@ use crate::pfs::sys::error::{
     FsError, FsResult, SgxStatus, EACCES, EINVAL, ENAMETOOLONG, ENOENT, ENOTSUP,
 };
 use crate::pfs::sys::file::{FileInner, FileStatus, OpenMode, OpenOptions};
-use crate::pfs::sys::host::{self, HostFile, HostFs, RawFile};
+use crate::pfs::sys::host::{self, HostFile, HostFs};
 use crate::pfs::sys::keys::{FsKeyGen, RestoreKey};
 use crate::pfs::sys::metadata::MetadataInfo;
 use crate::pfs::sys::metadata::{
@@ -200,7 +200,7 @@ impl FileInner {
         let file_size = host_file.size();
         drop(host_file);
 
-        host::recovery(path, recovery_path)?;
+        host::raw_file::recovery(path, recovery_path)?;
         let host_file = HostFile::open(path, opts.readonly())?;
         ensure!(
             host_file.size() == file_size,
@@ -210,16 +210,16 @@ impl FileInner {
     }
 
     fn check_file_exist(opts: &OpenOptions, mode: &OpenMode, path: &Path) -> FsResult {
-        let is_exist = host::try_exists(path)?;
+        let is_exist = host::raw_file::try_exists(path)?;
 
         if opts.read || mode.import_key().is_some() {
             ensure!(is_exist, eos!(ENOENT));
         }
         if opts.write && is_exist {
             // try to delete existing file
-            host::remove(path)?;
+            host::raw_file::remove(path)?;
             // re-check
-            let is_exist = host::try_exists(path)?;
+            let is_exist = host::raw_file::try_exists(path)?;
             ensure!(!is_exist, eos!(EACCES));
         }
 
@@ -238,7 +238,7 @@ impl FileInner {
         ensure!(name_len > 0, eos!(EINVAL));
         ensure!(name_len < FILENAME_MAX_LEN - 1, eos!(ENAMETOOLONG));
 
-        // opts.check()?;
+        opts.check()?;
         mode.check()?;
 
         // if let Some(key) = mode.import_key() {

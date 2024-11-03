@@ -59,6 +59,7 @@ impl PfsDisk {
         if !self.can_read {
             return_errno_with_msg!(Errno::IoFailed, "read is not allowed")
         }
+        self.validate_range(addr)?;
 
         let offset = addr * BLOCK_SIZE + PFS_INNER_OFFSET;
         let mut file = self.file.lock();
@@ -71,7 +72,7 @@ impl PfsDisk {
         if !self.can_write {
             return_errno_with_msg!(Errno::IoFailed, "write is not allowed")
         }
-
+        self.validate_range(addr)?;
         let offset = addr * BLOCK_SIZE + PFS_INNER_OFFSET;
         let mut file = self.file.lock();
         file.seek(SeekFrom::Start(offset as u64)).unwrap();
@@ -137,6 +138,13 @@ impl PfsDisk {
         drop(file);
 
         ret
+    }
+
+    fn validate_range(&self, addr: usize) -> Result<()> {
+        if addr >= self.total_blocks {
+            return_errno_with_msg!(Errno::IoFailed, "invalid block range")
+        }
+        Ok(())
     }
 
     fn get_range_in_bytes(&self, req: &Arc<BioReq>) -> Result<(usize, usize)> {
@@ -219,9 +227,9 @@ mod test {
 
     #[test]
     fn multi_block_read_write() {
-        let disk = PfsDisk::create("test.disk", 100).unwrap();
+        let disk = PfsDisk::create("test.disk", 100100).unwrap();
 
-        let block_count = 1000;
+        let block_count = 100000;
         for i in 0..block_count {
             let data_buf = vec![i as u8; BLOCK_SIZE];
             let buf = BufRef::try_from(data_buf.as_slice()).unwrap();

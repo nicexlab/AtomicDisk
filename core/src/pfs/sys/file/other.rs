@@ -27,7 +27,7 @@ use std::path::Path;
 impl FileInner {
     #[inline]
     pub fn remove(path: &Path) -> FsResult {
-        host::remove(path)
+        host::raw_file::remove(path)
     }
 
     #[inline]

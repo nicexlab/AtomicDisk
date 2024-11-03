@@ -36,7 +36,6 @@ use std::sync::Mutex;
 use super::error::SgxStatus;
 use super::error::EINVAL;
 use super::host::HostFile;
-use super::host::RawFile;
 
 mod close;
 mod flush;
