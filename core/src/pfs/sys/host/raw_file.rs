@@ -160,7 +160,7 @@ impl HostFs for RecoveryFile {
     }
 
     fn flush(&mut self) -> FsResult {
-        bail!(eos!(ENOTSUP))
+        self.file.stream.flush().map_err(|e| eos!(e))
     }
 }
 
@@ -331,8 +331,10 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
 
     let mut offset = 0;
     let mut flag_buf = vec![0_u8; 1];
+
+    // find the last commit offset, only the first record after the offset is marked as commit
     let mut last_commit_offset = offset;
-    while offset <= size {
+    while offset < size {
         recov
             .seek(SeekFrom::Start(offset as u64))
             .map_err(|e| FsError::OsError(e))?;
@@ -353,8 +355,6 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
         }
     }
 
-    //  ensure!(size % RECOVERY_NODE_SIZE == 0, eos!(ENOTSUP));
-
     let mode = CStr::from_bytes_with_nul(b"r+b\0")
         .map_err(|_| libc::EINVAL)
         .map_err(|e| FsError::OsError(e))?;
@@ -365,7 +365,11 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
     let mut data_buf = vec![0_u8; RECOVERY_NODE_SIZE];
 
     let mut set = HashSet::new();
-    while offset <= size {
+    while offset < size {
+        let mut left_size = size - offset;
+        if left_size < 1 {
+            break;
+        }
         recov
             .seek(SeekFrom::Start(offset as u64))
             .map_err(|e| FsError::OsError(e))?;
@@ -373,10 +377,14 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
             .read(flag_buf.as_mut_slice())
             .map_err(|e| FsError::OsError(e))?;
         offset += 1;
+        left_size -= 1;
         let flag: JournalFlag = flag_buf[0].into();
 
         match flag {
             JournalFlag::Node => {
+                if left_size < RECOVERY_NODE_SIZE {
+                    break;
+                }
                 recov
                     .seek(SeekFrom::Start(offset as u64))
                     .map_err(|e| FsError::OsError(e))?;
@@ -384,11 +392,10 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
                     .read(data_buf.as_mut_slice())
                     .map_err(|e| FsError::OsError(e))?;
 
-                //let physical_node_number = u64::from_ne_bytes(data_buf[0..8].try_into().unwrap());
                 let mut number = [0u8; 8];
                 number.copy_from_slice(&data_buf[0..8]);
                 let physical_node_number = u64::from_ne_bytes(number);
-
+                offset += RECOVERY_NODE_SIZE;
                 if offset >= last_commit_offset {
                     // the node is already committed, the updated node is uncommitted,skip it
                     if set.contains(&physical_node_number) {
@@ -396,7 +403,7 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
                     }
                     set.insert(physical_node_number);
                 }
-                offset += RECOVERY_NODE_SIZE;
+
                 src.seek(SeekFrom::Start(physical_node_number * NODE_SIZE as u64))
                     .map_err(|e| FsError::OsError(e))?;
                 src.write(&data_buf[8..]).map_err(|e| FsError::OsError(e))?;
@@ -420,7 +427,7 @@ mod tests {
     use super::{recovery, RawRecoveryFile, RecoveryFile};
 
     #[test]
-    fn test_recovery() {
+    fn test_simple_recovery() {
         let source_path = Path::new("test_source");
         let recovery_path = Path::new("test_recovery");
         let _ = HostFile::open(source_path, false).unwrap();
@@ -437,10 +444,48 @@ mod tests {
             buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
             recover_file.write(i as u64, &buf).unwrap();
         }
+        drop(recover_file);
         recovery(source_path, recovery_path).unwrap();
 
         let mut source_file = HostFile::open(source_path, false).unwrap();
+        for i in 0..8 {
+            let mut buf = vec![0u8; NODE_SIZE];
+            let expected = vec![i as u8; NODE_SIZE];
+            source_file.read(i as u64, &mut buf).unwrap();
+            assert_eq!(buf, expected);
+        }
+    }
+
+    // node [0-3] are before a commit record
+    // node [4-7] are after a commit record but are the first time to be recorded in the recovery file
+    // node 0 is updated in the recovery file after commit record, ignore it
+    #[test]
+    fn test_ignore_uncommitted_node() {
+        let source_path = Path::new("test_source");
+        let recovery_path = Path::new("test_recovery");
+        let _ = HostFile::open(source_path, false).unwrap();
+        let mut recover_file = RecoveryFile::open(recovery_path).unwrap();
         for i in 0..4 {
+            let mut buf = vec![i as u8; RECOVERY_NODE_SIZE];
+            buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
+            recover_file.write(i as u64, &buf).unwrap();
+        }
+        recover_file.commit().unwrap();
+
+        let mut buf = vec![5 as u8; RECOVERY_NODE_SIZE];
+        buf.as_mut_slice()[0..8].copy_from_slice(&(5 as u64).to_ne_bytes());
+        recover_file.write(5 as u64, &buf).unwrap();
+
+        for i in 4..8 {
+            let mut buf = vec![i as u8; RECOVERY_NODE_SIZE];
+            buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
+            recover_file.write(i as u64, &buf).unwrap();
+        }
+        drop(recover_file);
+        recovery(source_path, recovery_path).unwrap();
+
+        let mut source_file = HostFile::open(source_path, false).unwrap();
+        for i in 0..8 {
             let mut buf = vec![0u8; NODE_SIZE];
             let expected = vec![i as u8; NODE_SIZE];
             source_file.read(i as u64, &mut buf).unwrap();
