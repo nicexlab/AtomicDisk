@@ -171,7 +171,7 @@ pub struct RawRecoveryFile {
 
 impl RawRecoveryFile {
     pub fn open(name: &Path) -> OsResult<RawRecoveryFile> {
-        let mode = CStr::from_bytes_with_nul(b"wb\0").map_err(|_| libc::EINVAL)?;
+        let mode = CStr::from_bytes_with_nul(b"ab\0").map_err(|_| libc::EINVAL)?;
         for _ in 0..MAX_FOPEN_RETRIES {
             if let Ok(stream) = FileStream::open(name, mode) {
                 return Ok(RawRecoveryFile { stream });
@@ -417,14 +417,12 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
 }
 
 mod tests {
-    use std::path::Path;
-
+    use super::{recovery, RawRecoveryFile, RecoveryFile};
     use crate::pfs::sys::{
         host::{HostFile, HostFs, RECOVERY_NODE_SIZE},
         node::NODE_SIZE,
     };
-
-    use super::{recovery, RawRecoveryFile, RecoveryFile};
+    use std::path::Path;
 
     #[test]
     fn test_simple_recovery() {
@@ -491,5 +489,56 @@ mod tests {
             source_file.read(i as u64, &mut buf).unwrap();
             assert_eq!(buf, expected);
         }
+    }
+
+    #[test]
+    fn test_ignore_incomplete_node() {
+        let source_path = Path::new("test_source");
+        let recovery_path = Path::new("test_recovery");
+        let _ = HostFile::open(source_path, false).unwrap();
+        let mut recover_file = RecoveryFile::open(recovery_path).unwrap();
+        for i in 0..4 {
+            let mut buf = vec![i as u8; RECOVERY_NODE_SIZE];
+            buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
+            recover_file.write(i as u64, &buf).unwrap();
+        }
+        recover_file.commit().unwrap();
+
+        for i in 4..8 {
+            let mut buf = vec![i as u8; RECOVERY_NODE_SIZE];
+            buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
+            recover_file.write(i as u64, &buf).unwrap();
+        }
+
+        recovery(source_path, recovery_path).unwrap();
+
+        let mut source_file = HostFile::open(source_path, false).unwrap();
+        for i in 0..7 {
+            let mut buf = vec![0u8; NODE_SIZE];
+            let expected = vec![i as u8; NODE_SIZE];
+            source_file.read(i as u64, &mut buf).unwrap();
+            assert_eq!(buf, expected);
+        }
+
+        // the last node is incomplete, should return an error
+        let mut buf = vec![0u8; NODE_SIZE];
+        assert!(source_file.read(7 as u64, &mut buf).is_err());
+    }
+
+    #[test]
+    fn test_reopen_recovery_file() {
+        let source_path = Path::new("test_source");
+        let recovery_path = Path::new("test_recovery");
+        let _ = HostFile::open(source_path, false).unwrap();
+        let mut recover_file = RecoveryFile::open(recovery_path).unwrap();
+        for i in 0..4 {
+            let mut buf = vec![i as u8; RECOVERY_NODE_SIZE];
+            buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
+            recover_file.write(i as u64, &buf).unwrap();
+        }
+        drop(recover_file);
+        let recover_file = RecoveryFile::open(recovery_path).unwrap();
+        drop(recover_file);
+        recovery(source_path, recovery_path).unwrap();
     }
 }
