@@ -133,6 +133,17 @@ impl RecoveryHandler {
         )
     }
 
+    fn calculate_mht_logical_number(physical_number: u64) -> u64 {
+        let mht_logic_number = (physical_number - 2) / (ATTACHED_DATA_NODES_COUNT + 1);
+        mht_logic_number
+    }
+
+    fn calculate_data_logical_number(physical_number: u64) -> u64 {
+        let mht_logic_number = (physical_number - 2) / (ATTACHED_DATA_NODES_COUNT + 1);
+        let data_logic_number = physical_number - 2 - mht_logic_number;
+        data_logic_number
+    }
+
     pub fn get_data_node_numbers(offset: usize) -> (u64, u64) {
         let (_, logic, _, physical) = Self::get_node_numbers(offset);
         (logic, physical)
@@ -211,25 +222,25 @@ impl RecoveryHandler {
         mht_node.decrypt(&gcm_data.key, &gcm_data.mac).unwrap();
 
         let mht_node = FileNode::build_ref(mht_node);
+        self.mhts.insert(physical_number, mht_node.clone());
 
         mht_node
     }
 
     fn decrypt_node(
         &mut self,
-        disk_physical_number: u64,
+        physical_number: u64,
         node: EncryptedData,
     ) -> Arc<RefCell<FileNode>> {
-        let source_offset = disk_physical_number * NODE_SIZE as u64;
-        let (logical_number, physical_number) = Self::get_data_node_numbers(source_offset as usize);
-        assert!(physical_number == disk_physical_number);
+        let mht_logical_number = Self::calculate_mht_logical_number(physical_number);
+        let data_logical_number = Self::calculate_data_logical_number(physical_number);
 
         let encrypt_flags = EncryptFlags::UserKey;
-        let mht_node = self.get_mht_node(logical_number, encrypt_flags);
+        let mht_node = self.get_mht_node(mht_logical_number, encrypt_flags);
 
         let mut data_node = FileNode::new(
             NodeType::Data,
-            logical_number,
+            data_logical_number,
             physical_number,
             encrypt_flags,
         );
@@ -238,6 +249,7 @@ impl RecoveryHandler {
         data_node.ciphertext.node_data = node;
 
         let gcm_data = data_node.get_gcm_data().unwrap();
+
         data_node.decrypt(&gcm_data.key, &gcm_data.mac).unwrap();
 
         let data_node = FileNode::build_ref(data_node);
@@ -246,6 +258,9 @@ impl RecoveryHandler {
 }
 
 mod tests {
+    use core::cell::RefCell;
+    use std::sync::Arc;
+
     use hashbrown::HashMap;
 
     use crate::{
@@ -273,17 +288,24 @@ mod tests {
     }
 
     #[test]
-    fn get_number() {
-        let offset = 2 * 4096;
-        let (mht_logic, data_logic, mht_physical, data_physical) =
-            RecoveryHandler::get_node_numbers(offset);
-        println!(
-            "mht_logic: {}, data_logic: {}, mht_physical: {}, data_physical: {}",
-            mht_logic, data_logic, mht_physical, data_physical
-        );
+    fn test_calculate_logical_number() {
+        let logical_number = RecoveryHandler::calculate_data_logical_number(2);
+        assert_eq!(logical_number, 0);
+
+        let logical_number = RecoveryHandler::calculate_data_logical_number(3);
+        assert_eq!(logical_number, 1);
+
+        let logical_number = RecoveryHandler::calculate_data_logical_number(99);
+        assert_eq!(logical_number, 96);
+
+        let logical_number = RecoveryHandler::calculate_data_logical_number(195);
+        assert_eq!(logical_number, 192);
+
+        let logical_number = RecoveryHandler::calculate_data_logical_number(197);
+        assert_eq!(logical_number, 193);
     }
 
-    fn init_mhts() -> HashMap<u64, EncryptedData> {
+    fn init_mht(data: [u8; 4096]) -> (HashMap<u64, EncryptedData>, Arc<RefCell<FileNode>>) {
         let open_mode = OpenMode::UserKey(AeadKey::default());
         let key = AeadKey::default();
         let mut meta = new_file("test", &open_mode);
@@ -299,11 +321,13 @@ mod tests {
         mht1.borrow_mut().parent = Some(root_mht.clone());
 
         let mut data_node_guard = data_node.borrow_mut();
-        data_node_guard.plaintext.as_mut()[0..4096].copy_from_slice(&[1; 4096]);
+        data_node_guard.plaintext.as_mut()[0..4096].copy_from_slice(&data);
         data_node_guard.need_writing = true;
         data_node_guard.new_node = true;
         data_node_guard.encrypt_flags = EncryptFlags::UserKey;
         data_node_guard.encrypt(&key).unwrap();
+
+        drop(data_node_guard);
 
         mht1.borrow_mut().encrypt(&key).unwrap();
         let mac = root_mht.borrow_mut().encrypt(&key).unwrap();
@@ -322,18 +346,18 @@ mod tests {
         raw_mhts.insert(1, root_mht.borrow().ciphertext.node_data.clone());
         raw_mhts.insert(98, mht1.borrow().ciphertext.node_data.clone());
 
-        raw_mhts
+        (raw_mhts, data_node)
     }
 
     #[test]
     fn test_init_mhts() {
-        let raw_mhts = init_mhts();
+        let (raw_mhts, _) = init_mht([1; 4096]);
         let _recovery_handler = RecoveryHandler::new(raw_mhts);
     }
 
     #[test]
     fn test_encrypt_decrypt() {
-        let raw_mhts = init_mhts();
+        let (raw_mhts, _) = init_mht([1; 4096]);
         let key = AeadKey::default();
         let meta_data = raw_mhts.get(&0).unwrap();
         let mut meta_info = MetadataInfo::new();
@@ -368,7 +392,7 @@ mod tests {
     }
     #[test]
     fn test_get_node() {
-        let raw_mhts = init_mhts();
+        let (raw_mhts, _) = init_mht([1; 4096]);
         let mut recovery_handler = RecoveryHandler::new(raw_mhts);
 
         let node = recovery_handler.get_mht_node(1, EncryptFlags::UserKey);
@@ -376,5 +400,16 @@ mod tests {
 
         let node = recovery_handler.get_mht_node(0, EncryptFlags::UserKey);
         println!("{:?}", node);
+    }
+
+    #[test]
+    fn test_decrypt_data_node() {
+        let data = [1; 4096];
+        let (raw_mhts, data_node) = init_mht(data.clone());
+        let mut recovery_handler = RecoveryHandler::new(raw_mhts);
+
+        let node =
+            recovery_handler.decrypt_node(99, data_node.borrow().ciphertext.node_data.clone());
+        assert_eq!(node.borrow().plaintext.as_ref(), data.as_slice());
     }
 }
