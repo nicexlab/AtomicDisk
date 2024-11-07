@@ -244,3 +244,137 @@ impl RecoveryHandler {
         data_node
     }
 }
+
+mod tests {
+    use hashbrown::HashMap;
+
+    use crate::{
+        pfs::sys::{
+            file::OpenMode,
+            metadata::{EncryptFlags, MetadataInfo},
+            node::{EncryptedData, FileNode, NodeType},
+        },
+        AeadKey,
+    };
+
+    use super::RecoveryHandler;
+
+    fn new_file(file_name: &str, mode: &OpenMode) -> MetadataInfo {
+        let mut metadata = MetadataInfo::new();
+
+        metadata.set_encrypt_flags(mode.into());
+        if let Some(key_policy) = mode.key_policy() {
+            metadata.set_key_policy(key_policy);
+        }
+        metadata.encrypted_plain.file_name[0..file_name.len()]
+            .copy_from_slice(file_name.as_bytes());
+
+        metadata
+    }
+
+    #[test]
+    fn get_number() {
+        let offset = 2 * 4096;
+        let (mht_logic, data_logic, mht_physical, data_physical) =
+            RecoveryHandler::get_node_numbers(offset);
+        println!(
+            "mht_logic: {}, data_logic: {}, mht_physical: {}, data_physical: {}",
+            mht_logic, data_logic, mht_physical, data_physical
+        );
+    }
+
+    fn init_mhts() -> HashMap<u64, EncryptedData> {
+        let open_mode = OpenMode::UserKey(AeadKey::default());
+        let key = AeadKey::default();
+        let mut meta = new_file("test", &open_mode);
+
+        let root_mht =
+            FileNode::build_ref(FileNode::new(NodeType::Mht, 0, 1, EncryptFlags::UserKey));
+        let mht1 = FileNode::build_ref(FileNode::new(NodeType::Mht, 1, 98, EncryptFlags::UserKey));
+
+        let data_node =
+            FileNode::build_ref(FileNode::new(NodeType::Data, 96, 99, EncryptFlags::UserKey));
+
+        data_node.borrow_mut().parent = Some(mht1.clone());
+        mht1.borrow_mut().parent = Some(root_mht.clone());
+
+        let mut data_node_guard = data_node.borrow_mut();
+        data_node_guard.plaintext.as_mut()[0..4096].copy_from_slice(&[1; 4096]);
+        data_node_guard.need_writing = true;
+        data_node_guard.new_node = true;
+        data_node_guard.encrypt_flags = EncryptFlags::UserKey;
+        data_node_guard.encrypt(&key).unwrap();
+
+        mht1.borrow_mut().encrypt(&key).unwrap();
+        let mac = root_mht.borrow_mut().encrypt(&key).unwrap();
+
+        meta.encrypted_plain.mht_key = key;
+        meta.encrypted_plain.mht_gmac = mac;
+        meta.encrypt(&key).unwrap();
+
+        let mut raw_mhts = HashMap::new();
+        raw_mhts.insert(
+            0,
+            EncryptedData {
+                data: meta.node.metadata.as_ref().to_vec().try_into().unwrap(),
+            },
+        );
+        raw_mhts.insert(1, root_mht.borrow().ciphertext.node_data.clone());
+        raw_mhts.insert(98, mht1.borrow().ciphertext.node_data.clone());
+
+        raw_mhts
+    }
+
+    #[test]
+    fn test_init_mhts() {
+        let raw_mhts = init_mhts();
+        let _recovery_handler = RecoveryHandler::new(raw_mhts);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt() {
+        let raw_mhts = init_mhts();
+        let key = AeadKey::default();
+        let meta_data = raw_mhts.get(&0).unwrap();
+        let mut meta_info = MetadataInfo::new();
+        meta_info
+            .node
+            .metadata
+            .as_mut()
+            .copy_from_slice(meta_data.data.as_slice());
+        meta_info.decrypt(&key).unwrap();
+
+        let key = meta_info.encrypted_plain.mht_key;
+        let mac = meta_info.encrypted_plain.mht_gmac;
+
+        let root_mht_data = raw_mhts.get(&1).unwrap();
+
+        let mut root_mht = FileNode::new(NodeType::Mht, 0, 1, EncryptFlags::UserKey);
+        root_mht.ciphertext.node_data = root_mht_data.clone();
+        root_mht.decrypt(&key, &mac).unwrap();
+
+        let root_mht = FileNode::build_ref(root_mht);
+
+        let mht1_data = raw_mhts.get(&98).unwrap();
+
+        let mut mht1 = FileNode::new(NodeType::Mht, 1, 98, EncryptFlags::UserKey);
+        mht1.ciphertext.node_data = mht1_data.clone();
+        mht1.parent = Some(root_mht.clone());
+
+        let gcm_data = mht1.get_gcm_data().unwrap();
+        mht1.decrypt(&gcm_data.key, &gcm_data.mac).unwrap();
+
+        let _mht1 = FileNode::build_ref(mht1);
+    }
+    #[test]
+    fn test_get_node() {
+        let raw_mhts = init_mhts();
+        let mut recovery_handler = RecoveryHandler::new(raw_mhts);
+
+        let node = recovery_handler.get_mht_node(1, EncryptFlags::UserKey);
+        println!("{:?}", node);
+
+        let node = recovery_handler.get_mht_node(0, EncryptFlags::UserKey);
+        println!("{:?}", node);
+    }
+}
