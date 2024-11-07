@@ -77,7 +77,7 @@ pub struct DataNode {
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct EncryptedData {
-    data: [u8; NODE_SIZE],
+    pub data: [u8; NODE_SIZE],
 }
 
 #[derive(Clone, Debug)]

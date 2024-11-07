@@ -131,7 +131,7 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    fn new() -> Metadata {
+    pub fn new() -> Metadata {
         Metadata {
             plaintext: MetadataPlain::new(),
             ciphertext: [0_u8; METADATA_ENCRYPTED],

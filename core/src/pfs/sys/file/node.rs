@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use log::{debug, info};
+
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
 use crate::pfs::sys::file::{FileInner, FileStatus};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
@@ -127,7 +129,6 @@ impl FileInner {
     fn append_data_node(&mut self) -> FsResult<FileNodeRef> {
         let mht_node = self.get_mht_node()?;
         let (logic_number, physical_number) = self.get_data_node_numbers();
-
         let mut data_node = FileNode::new(
             NodeType::Data,
             logic_number,
@@ -234,7 +235,7 @@ impl FileInner {
     }
 
     #[inline]
-    fn get_data_node_numbers(&self) -> (u64, u64) {
+    pub fn get_data_node_numbers(&self) -> (u64, u64) {
         let (_, logic, _, physical) = self.get_node_numbers();
         (logic, physical)
     }
@@ -243,5 +244,43 @@ impl FileInner {
     fn get_mht_node_numbers(&self) -> (u64, u64) {
         let (logic, _, physical, _) = self.get_node_numbers();
         (logic, physical)
+    }
+
+    pub fn is_data_node(physical_number: u64) -> bool {
+        if physical_number == 0 {
+            // node 0 is metadata node,
+            return false;
+        }
+
+        // For nodes starting from 2:
+        // - Each group contains ATTACHED_DATA_NODES_COUNT + 1 nodes
+        // - In each group, first node is MHT node, followed by ATTACHED_DATA_NODES_COUNT data nodes
+        // Example:
+        // - node 0: metadata node
+        // - node 1: MHT root node
+        // - node 2-97: data nodes (96 nodes)
+        // - node 98: MHT node
+        // - node 99-194: data nodes
+        // And so on...
+        let adjusted_number = physical_number - 1;
+        let position_in_group = adjusted_number % (ATTACHED_DATA_NODES_COUNT + 1);
+
+        // If position in group is not 0 (not MHT node), then it's a data node
+        position_in_group != 0
+    }
+}
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_data_node() {
+        assert!(!FileInner::is_data_node(0));
+        assert!(FileInner::is_data_node(1));
+        assert!(FileInner::is_data_node(2));
+        assert!(!FileInner::is_data_node(98));
+        assert!(FileInner::is_data_node(99));
+        assert!(FileInner::is_data_node(194));
+        assert!(!FileInner::is_data_node(195));
     }
 }

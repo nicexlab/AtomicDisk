@@ -51,7 +51,7 @@ pub struct ProtectedFile {
 }
 
 #[derive(Debug)]
-struct FileInner {
+pub struct FileInner {
     host_file: HostFile,
     metadata: MetadataInfo,
     root_mht: FileNodeRef,
@@ -505,6 +505,8 @@ pub enum CloseMode {
 mod test {
     use std::sync::Once;
 
+    use open::SE_PAGE_SIZE;
+
     use crate::pfs::sys::host::HostFs;
 
     use super::*;
@@ -631,5 +633,54 @@ mod test {
         file.seek(pos).unwrap();
         file.read(&mut read_buffer).unwrap();
         assert_eq!(read_buffer, vec![2u8; block_size]);
+    }
+
+    #[test]
+    fn recovery_and_discard_uncommited_records() {
+        init_logger();
+        let source_path = Path::new("test.data");
+        let _ = std::fs::File::create(source_path).unwrap();
+        let opts = OpenOptions::new().read(false).write(true);
+        let key = AeadKey::default();
+        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+
+        let block_size = 4 * 1024;
+        let block_number = 100;
+        const META_OFFSET: u64 = 3072;
+
+        let write_buffer = vec![2u8; block_size];
+        let offset = 5 * block_size as u64 + META_OFFSET;
+        file.write_at(&write_buffer, offset).unwrap();
+
+        // write enought to trigger eviction
+        for i in 10..block_number {
+            let offset = i * block_size as u64 + META_OFFSET;
+            let write_buffer = vec![3u8; block_size];
+            file.write_at(&write_buffer, offset).unwrap();
+        }
+        file.flush().unwrap();
+
+        let write_buffer = vec![3u8; block_size];
+        file.write_at(&write_buffer, offset).unwrap();
+
+        // // write enought to trigger eviction
+        for i in block_number..2 * block_number {
+            let offset = i * block_size as u64 + META_OFFSET;
+            let write_buffer = vec![3u8; block_size];
+            file.write_at(&write_buffer, offset).unwrap();
+        }
+
+        drop(file);
+
+        let opts = OpenOptions::new().read(true).write(false);
+        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+
+        let mut read_buffer = vec![0u8; block_size];
+        file.seek(SeekFrom::Start(offset)).unwrap();
+        file.read(&mut read_buffer).unwrap();
+
+        println!("{:?}", read_buffer);
+
+        drop(file);
     }
 }

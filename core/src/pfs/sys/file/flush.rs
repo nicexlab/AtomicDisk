@@ -17,7 +17,7 @@
 
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
 use crate::pfs::sys::file::{FileInner, FileStatus};
-use crate::pfs::sys::host::raw_file::RecoveryFile;
+use crate::pfs::sys::host::raw_file::{remove, RecoveryFile};
 use crate::pfs::sys::host::{self, HostFs};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
@@ -96,6 +96,13 @@ impl FileInner {
 
         if flush {
             self.host_file.flush()?;
+            let mut recovery_file = RecoveryFile::open(&self.recovery_path)?;
+            // append a commit record in the recovery file, all records before this commit record are committed
+            recovery_file.commit()?;
+            // flush the recovery file to disk
+            recovery_file.flush()?;
+            // all nodes are persisted on disk, the recovery file is no longer needed
+            remove(&self.recovery_path)?;
         }
         Ok(())
     }
@@ -195,7 +202,8 @@ impl FileInner {
 
     fn write_recovery_file_node(&mut self) -> FsResult {
         let mut file = RecoveryFile::open(&self.recovery_path)?;
-
+        let mut mht_nodes = vec![];
+        let mut data_nodes = vec![];
         for node in self.cache.iter().filter_map(|node| {
             let node = node.borrow();
             if node.need_writing && !node.new_node {
@@ -204,6 +212,21 @@ impl FileInner {
                 None
             }
         }) {
+            //node.write_recovery_file(&mut file)?;
+            if node.is_mht() {
+                mht_nodes.push(node.clone());
+            } else {
+                data_nodes.push(node.clone());
+            }
+        }
+
+        mht_nodes.sort_by(|a, b| b.logic_number.cmp(&a.logic_number));
+
+        for node in mht_nodes.iter() {
+            node.write_recovery_file(&mut file)?;
+        }
+
+        for node in data_nodes.iter() {
             node.write_recovery_file(&mut file)?;
         }
 

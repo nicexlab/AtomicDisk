@@ -15,18 +15,21 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use hashbrown::HashMap;
+
 use crate::pfs::sys::cache::LruCache;
 use crate::pfs::sys::error::{
     FsError, FsResult, SgxStatus, EACCES, EINVAL, ENAMETOOLONG, ENOENT, ENOTSUP,
 };
 use crate::pfs::sys::file::{FileInner, FileStatus, OpenMode, OpenOptions};
-use crate::pfs::sys::host::{self, HostFile, HostFs};
+use crate::pfs::sys::host::raw_file::RecoveryFile;
+use crate::pfs::sys::host::{self, HostFile, HostFs, RECOVERY_NODE_SIZE};
 use crate::pfs::sys::keys::{FsKeyGen, RestoreKey};
 use crate::pfs::sys::metadata::MetadataInfo;
 use crate::pfs::sys::metadata::{
     FILENAME_MAX_LEN, FULLNAME_MAX_LEN, MD_USER_DATA_SIZE, SGX_FILE_ID, SGX_FILE_MAJOR_VERSION,
 };
-use crate::pfs::sys::node::{FileNode, FileNodeRef};
+use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType, NODE_SIZE};
 use crate::{bail, ensure, eos, AeadKey};
 
 use std::borrow::ToOwned;
@@ -75,16 +78,23 @@ impl FileInner {
             // existing file
             ensure!(!opts.write, eos!(EACCES));
 
-            let (host_file, metadata, root_mht) =
+            let (host_file, metadata, root_mht, rollback_nodes) =
                 match Self::open_file(&mut host_file, file_name, &key_gen, mode) {
-                    Ok((metadata, root_mht)) => (host_file, metadata, root_mht),
+                    Ok((metadata, root_mht)) => {
+                        // use recovery file to discard all uncommitted nodes
+                        let (mut host_file, rollback_nodes) =
+                            Self::recover_and_reopen_file(host_file, path, &recovery_path, opts)?;
+                        let (metadata, root_mht) =
+                            Self::open_file(&mut host_file, file_name, &key_gen, mode)?;
+                        (host_file, metadata, root_mht, rollback_nodes)
+                    }
                     Err(e) if e.equal_to_sgx_error(SgxStatus::RecoveryNeeded) => {
-                        let mut host_file =
+                        let (mut host_file, rollback_nodes) =
                             Self::recover_and_reopen_file(host_file, path, &recovery_path, opts)?;
 
                         let (metadata, root_mht) =
                             Self::open_file(&mut host_file, file_name, &key_gen, mode)?;
-                        (host_file, metadata, root_mht)
+                        (host_file, metadata, root_mht, rollback_nodes)
                     }
                     Err(e) => bail!(e),
                 };
@@ -190,23 +200,55 @@ impl FileInner {
         Ok(metadata)
     }
 
+    fn rollback_nodes(&self, rollback_nodes: HashMap<u64, Vec<u8>>) -> FsResult<()> {
+        let recovery_file = RecoveryFile::open(self.recovery_path.as_ref())?;
+        for (physical_number, data) in rollback_nodes {
+            if FileInner::is_data_node(physical_number) {
+                let offset = physical_number as usize * NODE_SIZE;
+                let (logical_number, new_physical_number) = self.get_data_node_numbers();
+                assert_eq!(new_physical_number, physical_number);
+                let data_node = FileNode::new(
+                    NodeType::Data,
+                    logical_number,
+                    physical_number,
+                    self.metadata.encrypt_flags(),
+                );
+                // data_node.decrypt(key, mac)
+                // self.write(buf)
+                //     let data_node = FileNode::from(data);
+                // Only rollback data nodes, mht nodes should be calculated by data nodes' key and mac
+            }
+        }
+
+        todo!()
+    }
+
     #[inline]
     fn recover_and_reopen_file(
         host_file: HostFile,
         path: &Path,
         recovery_path: &Path,
         opts: &OpenOptions,
-    ) -> FsResult<HostFile> {
+    ) -> FsResult<(HostFile, HashMap<u64, Vec<u8>>)> {
         let file_size = host_file.size();
         drop(host_file);
 
-        host::raw_file::recovery(path, recovery_path)?;
+        // recovery file does not exist,all committed nodes are persisted on disk and all uncommitted nodes are discarded
+        if !Self::files_exist(recovery_path)? {
+            return Ok((HostFile::open(path, opts.readonly())?, HashMap::new()));
+        }
+
+        let roll_back_nodes = host::raw_file::recovery(path, recovery_path)?;
         let host_file = HostFile::open(path, opts.readonly())?;
         ensure!(
             host_file.size() == file_size,
             FsError::SgxError(SgxStatus::Unexpected)
         );
-        Ok(host_file)
+        Ok((host_file, roll_back_nodes))
+    }
+
+    fn files_exist(path: &Path) -> FsResult<bool> {
+        host::raw_file::try_exists(path)
     }
 
     fn check_file_exist(opts: &OpenOptions, mode: &OpenMode, path: &Path) -> FsResult {
@@ -252,7 +294,7 @@ impl FileInner {
         cache_size
             .or(Some(DEFAULT_CACHE_SIZE))
             .and_then(|cache_size| {
-                if is_page_aligned!(cache_size) && cache_size >= DEFAULT_CACHE_SIZE {
+                if is_page_aligned!(cache_size) {
                     Some(cache_size / SE_PAGE_SIZE)
                 } else {
                     None

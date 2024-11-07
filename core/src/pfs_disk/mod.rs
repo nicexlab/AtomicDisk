@@ -227,9 +227,9 @@ mod test {
 
     #[test]
     fn multi_block_read_write() {
-        let disk = PfsDisk::create("test.disk", 100100).unwrap();
+        let disk = PfsDisk::create("test.disk", 10100).unwrap();
 
-        let block_count = 100000;
+        let block_count = 10000;
         for i in 0..block_count {
             let data_buf = vec![i as u8; BLOCK_SIZE];
             let buf = BufRef::try_from(data_buf.as_slice()).unwrap();

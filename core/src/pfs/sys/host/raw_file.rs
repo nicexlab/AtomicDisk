@@ -1,10 +1,16 @@
-use crate::ensure;
 use crate::pfs::sys::error::{FsError, FsResult, OsResult, ENOTSUP};
+use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::host::RECOVERY_NODE_SIZE;
-use crate::pfs::sys::node::NODE_SIZE;
+use crate::pfs::sys::metadata::{EncryptFlags, Metadata, MetadataInfo, MD_USER_DATA_SIZE};
+use crate::pfs::sys::node::{
+    EncryptedData, FileNode, NodeType, ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE,
+};
 use crate::{bail, eos};
-use hashbrown::HashSet;
+use crate::{ensure, AeadKey};
+use core::cell::RefCell;
+use hashbrown::{HashMap, HashSet};
 use libc::c_void;
+use log::{debug, info};
 use std::ffi::{CStr, CString};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Error, ErrorKind, SeekFrom};
@@ -12,6 +18,7 @@ use std::mem::{self, ManuallyDrop};
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
+use std::sync::Arc;
 
 use super::{HostFs, JournalFlag, MAX_FOPEN_RETRIES, MILISECONDS_SLEEP_FOPEN};
 #[derive(Debug)]
@@ -211,12 +218,12 @@ fn errno() -> i32 {
 }
 
 #[derive(Debug)]
-struct FileStream {
+pub struct FileStream {
     stream: RawFileStream,
 }
 
 impl FileStream {
-    fn open(name: &Path, mode: &CStr) -> OsResult<FileStream> {
+    pub fn open(name: &Path, mode: &CStr) -> OsResult<FileStream> {
         let name = cstr(name)?;
         let stream = unsafe { libc::fopen(name.as_ptr(), mode.as_ptr()) };
         if stream.is_null() {
@@ -226,7 +233,7 @@ impl FileStream {
         }
     }
 
-    fn read(&self, buf: &mut [u8]) -> OsResult {
+    pub fn read(&self, buf: &mut [u8]) -> OsResult {
         let size =
             unsafe { libc::fread(buf.as_mut_ptr() as *mut c_void, buf.len(), 1, self.stream) };
         if size != 1 {
@@ -242,7 +249,7 @@ impl FileStream {
         Ok(())
     }
 
-    fn write(&self, buf: &[u8]) -> OsResult {
+    pub fn write(&self, buf: &[u8]) -> OsResult {
         let size =
             unsafe { libc::fwrite(buf.as_ptr() as *const c_void, 1, buf.len(), self.stream) };
         if size != buf.len() {
@@ -258,14 +265,14 @@ impl FileStream {
         Ok(())
     }
 
-    fn flush(&self) -> OsResult {
+    pub fn flush(&self) -> OsResult {
         if unsafe { libc::fflush(self.stream) } != 0 {
             bail!(errno())
         }
         Ok(())
     }
 
-    fn seek(&self, pos: SeekFrom) -> OsResult {
+    pub fn seek(&self, pos: SeekFrom) -> OsResult {
         let (offset, whence) = match pos {
             SeekFrom::Start(off) => (off as i64, libc::SEEK_SET),
             SeekFrom::End(off) => (off, libc::SEEK_END),
@@ -277,19 +284,19 @@ impl FileStream {
         Ok(())
     }
 
-    fn tell(&self) -> OsResult<u64> {
+    pub fn tell(&self) -> OsResult<u64> {
         let off = unsafe { libc::ftello(self.stream) };
         ensure!(off >= 0, errno());
 
         Ok(off as u64)
     }
 
-    fn last_error(&self) -> i32 {
+    pub fn last_error(&self) -> i32 {
         unsafe { libc::ferror(self.stream) }
     }
 
     /// # Safety
-    unsafe fn from_raw_fd(fd: RawFd, mode: &CStr) -> OsResult<FileStream> {
+    pub unsafe fn from_raw_fd(fd: RawFd, mode: &CStr) -> OsResult<FileStream> {
         let stream = libc::fdopen(fd, mode.as_ptr());
         ensure!(!stream.is_null(), errno());
 
@@ -315,7 +322,7 @@ pub fn try_exists(path: &Path) -> FsResult<bool> {
     }
 }
 
-pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
+pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Vec<u8>>> {
     let mode = CStr::from_bytes_with_nul(b"rb\0")
         .map_err(|_| libc::EINVAL)
         .map_err(|e| FsError::OsError(e))?;
@@ -364,7 +371,7 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
 
     let mut data_buf = vec![0_u8; RECOVERY_NODE_SIZE];
 
-    let mut set = HashSet::new();
+    let mut first_offset = HashMap::new();
     while offset < size {
         let mut left_size = size - offset;
         if left_size < 1 {
@@ -398,10 +405,9 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
                 offset += RECOVERY_NODE_SIZE;
                 if offset >= last_commit_offset {
                     // the node is already committed, the updated node is uncommitted,skip it
-                    if set.contains(&physical_node_number) {
-                        continue;
-                    }
-                    set.insert(physical_node_number);
+                    //if first_offset.contains_key(&physical_node_number) {}
+                    debug!("insert committed node: {}", physical_node_number);
+                    first_offset.insert(physical_node_number, data_buf[8..].to_vec());
                 }
 
                 src.seek(SeekFrom::Start(physical_node_number * NODE_SIZE as u64))
@@ -413,7 +419,7 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult {
     }
 
     src.flush().map_err(|e| FsError::OsError(e))?;
-    remove(recovery)
+    Ok(first_offset)
 }
 
 mod tests {
