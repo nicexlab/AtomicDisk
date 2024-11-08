@@ -103,6 +103,34 @@ impl RecoveryHandler {
         }
     }
 
+    pub fn is_mht_node(physical_number: u64) -> bool {
+        if physical_number <= 1 {
+            // node 0 is metadata node,
+            // node 1 is mht root node
+            return true;
+        }
+
+        // For nodes starting from 2:
+        // - Each group contains ATTACHED_DATA_NODES_COUNT + 1 nodes
+        // - In each group, first node is MHT node, followed by ATTACHED_DATA_NODES_COUNT data nodes
+        // Example:
+        // - node 0: metadata node
+        // - node 1: MHT root node
+        // - node 2-97: data nodes (96 nodes)
+        // - node 98: MHT node
+        // - node 99-194: data nodes
+        // And so on...
+        let adjusted_number = physical_number - 1;
+        let position_in_group = adjusted_number % (ATTACHED_DATA_NODES_COUNT + 1);
+
+        // If position in group is not 0 (not MHT node), then it's a data node
+        position_in_group == 0
+    }
+    pub fn push_raw_mht(&mut self, physical_number: u64, mht_data: [u8; NODE_SIZE]) {
+        let encrypted_data = EncryptedData { data: mht_data };
+        self.raw_mhts.insert(physical_number, encrypted_data);
+    }
+
     fn get_node_numbers(offset: usize) -> (u64, u64, u64, u64) {
         if offset < MD_USER_DATA_SIZE {
             return (0, 0, 0, 0);
@@ -133,12 +161,12 @@ impl RecoveryHandler {
         )
     }
 
-    fn calculate_mht_logical_number(physical_number: u64) -> u64 {
+    pub fn calculate_mht_logical_number(physical_number: u64) -> u64 {
         let mht_logic_number = (physical_number - 2) / (ATTACHED_DATA_NODES_COUNT + 1);
         mht_logic_number
     }
 
-    fn calculate_data_logical_number(physical_number: u64) -> u64 {
+    pub fn calculate_data_logical_number(physical_number: u64) -> u64 {
         let mht_logic_number = (physical_number - 2) / (ATTACHED_DATA_NODES_COUNT + 1);
         let data_logic_number = physical_number - 2 - mht_logic_number;
         data_logic_number

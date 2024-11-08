@@ -70,6 +70,13 @@ impl FileInner {
         }
     }
 
+    pub fn get_mht_node_by_logic_number(&mut self, logic_number: u64) -> FsResult<FileNodeRef> {
+        if logic_number == 0 {
+            return Ok(self.root_mht.clone());
+        }
+        self.read_mht_node(logic_number)
+    }
+
     fn append_mht_node(&mut self, logic_number: u64) -> FsResult<FileNodeRef> {
         let parent_mht_node = self.read_mht_node((logic_number - 1) / CHILD_MHT_NODES_COUNT)?;
 

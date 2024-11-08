@@ -18,7 +18,7 @@
 use crate::pfs::sys::error::{FsResult, EACCES};
 use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
-use crate::pfs::sys::node::NODE_SIZE;
+use crate::pfs::sys::node::{FileNodeRef, NODE_SIZE};
 use crate::{bail, ensure, eos};
 use std::io::SeekFrom;
 
@@ -132,5 +132,32 @@ impl FileInner {
         self.offset = cur_offset;
 
         result
+    }
+
+    pub fn rollback_data_node(
+        &mut self,
+        physical_number: u64,
+        data_node: FileNodeRef,
+    ) -> FsResult<()> {
+        let mut file_node = data_node.borrow_mut();
+        if !file_node.need_writing {
+            file_node.need_writing = true;
+
+            let mut parent = file_node.parent.clone();
+            while let Some(mht) = parent {
+                let mut mht = mht.borrow_mut();
+                if !mht.is_root_mht() {
+                    mht.need_writing = true;
+                    parent = mht.parent.clone();
+                } else {
+                    break;
+                }
+            }
+
+            self.root_mht.borrow_mut().need_writing = true;
+            self.need_writing = true;
+        }
+        self.cache.push(physical_number, data_node.clone());
+        Ok(())
     }
 }

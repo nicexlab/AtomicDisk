@@ -20,7 +20,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 use std::sync::Arc;
 
-use super::{HostFs, JournalFlag, MAX_FOPEN_RETRIES, MILISECONDS_SLEEP_FOPEN};
+use super::{HostFs, JournalFlag, RecoveryHandler, MAX_FOPEN_RETRIES, MILISECONDS_SLEEP_FOPEN};
 #[derive(Debug)]
 pub struct RawFile {
     stream: FileStream,
@@ -322,7 +322,7 @@ pub fn try_exists(path: &Path) -> FsResult<bool> {
     }
 }
 
-pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Vec<u8>>> {
+pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Arc<RefCell<FileNode>>>> {
     let mode = CStr::from_bytes_with_nul(b"rb\0")
         .map_err(|_| libc::EINVAL)
         .map_err(|e| FsError::OsError(e))?;
@@ -369,9 +369,10 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Vec<u8>
 
     offset = 0;
 
-    let mut data_buf = vec![0_u8; RECOVERY_NODE_SIZE];
+    let mut recovery_handler = RecoveryHandler::new(HashMap::new());
+    let mut data_buf = [0_u8; RECOVERY_NODE_SIZE];
 
-    let mut first_offset = HashMap::new();
+    let mut rollback_nodes = HashMap::new();
     while offset < size {
         let mut left_size = size - offset;
         if left_size < 1 {
@@ -402,12 +403,24 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Vec<u8>
                 let mut number = [0u8; 8];
                 number.copy_from_slice(&data_buf[0..8]);
                 let physical_node_number = u64::from_ne_bytes(number);
+                if RecoveryHandler::is_mht_node(physical_node_number) {
+                    recovery_handler
+                        .push_raw_mht(physical_node_number, data_buf[8..].try_into().unwrap());
+                }
                 offset += RECOVERY_NODE_SIZE;
                 if offset >= last_commit_offset {
-                    // the node is already committed, the updated node is uncommitted,skip it
-                    //if first_offset.contains_key(&physical_node_number) {}
-                    debug!("insert committed node: {}", physical_node_number);
-                    first_offset.insert(physical_node_number, data_buf[8..].to_vec());
+                    // record the first version of data node
+                    if !rollback_nodes.contains_key(&physical_node_number)
+                        && !RecoveryHandler::is_mht_node(physical_node_number)
+                    {
+                        debug!("insert committed node: {}", physical_node_number);
+                        let encrypted_data = EncryptedData {
+                            data: data_buf[8..].try_into().unwrap(),
+                        };
+                        let data_node =
+                            recovery_handler.decrypt_node(physical_node_number, encrypted_data);
+                        rollback_nodes.insert(physical_node_number, data_node);
+                    }
                 }
 
                 src.seek(SeekFrom::Start(physical_node_number * NODE_SIZE as u64))
@@ -419,7 +432,7 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Vec<u8>
     }
 
     src.flush().map_err(|e| FsError::OsError(e))?;
-    Ok(first_offset)
+    Ok(rollback_nodes)
 }
 
 mod tests {

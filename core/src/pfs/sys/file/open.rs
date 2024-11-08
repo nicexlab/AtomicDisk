@@ -23,7 +23,7 @@ use crate::pfs::sys::error::{
 };
 use crate::pfs::sys::file::{FileInner, FileStatus, OpenMode, OpenOptions};
 use crate::pfs::sys::host::raw_file::RecoveryFile;
-use crate::pfs::sys::host::{self, HostFile, HostFs, RECOVERY_NODE_SIZE};
+use crate::pfs::sys::host::{self, HostFile, HostFs, RecoveryHandler, RECOVERY_NODE_SIZE};
 use crate::pfs::sys::keys::{FsKeyGen, RestoreKey};
 use crate::pfs::sys::metadata::MetadataInfo;
 use crate::pfs::sys::metadata::{
@@ -32,8 +32,10 @@ use crate::pfs::sys::metadata::{
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType, NODE_SIZE};
 use crate::{bail, ensure, eos, AeadKey};
 
+use core::cell::RefCell;
 use std::borrow::ToOwned;
 use std::path::Path;
+use std::sync::Arc;
 
 pub const SE_PAGE_SIZE: usize = 0x1000;
 macro_rules! is_page_aligned {
@@ -74,13 +76,13 @@ impl FileInner {
 
         let mut need_writing = false;
         let mut offset = 0;
-        let (host_file, metadata, root_mht) = if file_size > 0 {
+        let (host_file, metadata, root_mht, rollback_nodes) = if file_size > 0 {
             // existing file
             ensure!(!opts.write, eos!(EACCES));
 
             let (host_file, metadata, root_mht, rollback_nodes) =
                 match Self::open_file(&mut host_file, file_name, &key_gen, mode) {
-                    Ok((metadata, root_mht)) => {
+                    Ok((_metadata, _root_mht)) => {
                         // use recovery file to discard all uncommitted nodes
                         let (mut host_file, rollback_nodes) =
                             Self::recover_and_reopen_file(host_file, path, &recovery_path, opts)?;
@@ -102,11 +104,16 @@ impl FileInner {
             if opts.append && !opts.update {
                 offset = metadata.encrypted_plain.size;
             }
-            (host_file, metadata, root_mht)
+            (host_file, metadata, root_mht, rollback_nodes)
         } else {
             let metadata = Self::new_file(file_name, mode)?;
             need_writing = true;
-            (host_file, metadata, FileNode::new_root_ref(mode.into()))
+            (
+                host_file,
+                metadata,
+                FileNode::new_root_ref(mode.into()),
+                HashMap::new(),
+            )
         };
 
         let mut protected_file = Self {
@@ -125,6 +132,7 @@ impl FileInner {
             cache: LruCache::new(cache_size),
         };
 
+        protected_file.rollback_nodes(rollback_nodes)?;
         protected_file.status = FileStatus::Ok;
         Ok(protected_file)
     }
@@ -200,24 +208,24 @@ impl FileInner {
         Ok(metadata)
     }
 
-    fn rollback_nodes(&self, rollback_nodes: HashMap<u64, Vec<u8>>) -> FsResult<()> {
-        let recovery_file = RecoveryFile::open(self.recovery_path.as_ref())?;
-        for (physical_number, data) in rollback_nodes {
-            if FileInner::is_data_node(physical_number) {
-                let offset = physical_number as usize * NODE_SIZE;
-                let (logical_number, new_physical_number) = self.get_data_node_numbers();
-                assert_eq!(new_physical_number, physical_number);
-                let data_node = FileNode::new(
-                    NodeType::Data,
-                    logical_number,
-                    physical_number,
-                    self.metadata.encrypt_flags(),
-                );
-                // data_node.decrypt(key, mac)
-                // self.write(buf)
-                //     let data_node = FileNode::from(data);
-                // Only rollback data nodes, mht nodes should be calculated by data nodes' key and mac
-            }
+    fn rollback_nodes(
+        &mut self,
+        rollback_nodes: HashMap<u64, Arc<RefCell<FileNode>>>,
+    ) -> FsResult<()> {
+        for (physical_number, data_node) in rollback_nodes {
+            assert!(Self::is_data_node(physical_number));
+
+            data_node.borrow_mut().encrypt_flags = self.metadata.encrypt_flags();
+
+            let mht_logical_number = RecoveryHandler::calculate_mht_logical_number(physical_number);
+
+            let parent_mht = self.get_mht_node_by_logic_number(mht_logical_number)?;
+            // udpated the parent of data node
+            data_node.borrow_mut().parent = Some(parent_mht);
+
+            self.rollback_data_node(physical_number, data_node)?;
+
+            // Only rollback data nodes, mht nodes should be calculated by data nodes' key and mac
         }
 
         todo!()
@@ -229,7 +237,7 @@ impl FileInner {
         path: &Path,
         recovery_path: &Path,
         opts: &OpenOptions,
-    ) -> FsResult<(HostFile, HashMap<u64, Vec<u8>>)> {
+    ) -> FsResult<(HostFile, HashMap<u64, Arc<RefCell<FileNode>>>)> {
         let file_size = host_file.size();
         drop(host_file);
 
