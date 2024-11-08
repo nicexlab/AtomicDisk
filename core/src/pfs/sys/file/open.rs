@@ -131,8 +131,9 @@ impl FileInner {
             recovery_path,
             cache: LruCache::new(cache_size),
         };
-
-        protected_file.rollback_nodes(rollback_nodes)?;
+        if !rollback_nodes.is_empty() {
+            protected_file.rollback_nodes(rollback_nodes)?;
+        }
         protected_file.status = FileStatus::Ok;
         Ok(protected_file)
     }
@@ -208,7 +209,7 @@ impl FileInner {
         Ok(metadata)
     }
 
-    fn rollback_nodes(
+    pub fn rollback_nodes(
         &mut self,
         rollback_nodes: HashMap<u64, Arc<RefCell<FileNode>>>,
     ) -> FsResult<()> {
@@ -227,8 +228,7 @@ impl FileInner {
 
             // Only rollback data nodes, mht nodes should be calculated by data nodes' key and mac
         }
-
-        todo!()
+        Ok(())
     }
 
     #[inline]

@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use hashbrown::HashMap;
+
 use crate::bail;
 use crate::ensure;
 use crate::eos;
@@ -28,9 +30,11 @@ use crate::pfs::sys::EncryptMode;
 use crate::AeadKey;
 use crate::AeadMac;
 
+use core::cell::RefCell;
 use std::io::SeekFrom;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use super::error::SgxStatus;
@@ -275,6 +279,17 @@ impl ProtectedFile {
         FileInner::remove(path.as_ref())
     }
 
+    #[cfg(test)]
+    pub fn rollback_nodes(&self, rollback_nodes: HashMap<u64, Arc<RefCell<FileNode>>>) -> FsResult {
+        let mut file = self.file.lock().map_err(|posion_error| {
+            let mut file = posion_error.into_inner();
+            file.set_last_error(SgxStatus::Unexpected);
+            file.set_file_status(FileStatus::MemoryCorrupted);
+            SgxStatus::Unexpected
+        })?;
+        file.rollback_nodes(rollback_nodes)
+    }
+
     #[cfg(feature = "tfs")]
     pub fn export_key<P: AsRef<Path>>(path: P) -> FsResult<Key128bit> {
         let mut file = FileInner::open(
@@ -507,7 +522,7 @@ mod test {
 
     use open::SE_PAGE_SIZE;
 
-    use crate::pfs::sys::host::HostFs;
+    use crate::pfs::sys::{host::HostFs, metadata::EncryptFlags, node::NodeType};
 
     use super::*;
 
@@ -636,7 +651,7 @@ mod test {
     }
 
     #[test]
-    fn recovery_and_discard_uncommited_records() {
+    fn ignore_mht_node_when_recovery() {
         init_logger();
         let source_path = Path::new("test.data");
         let _ = std::fs::File::create(source_path).unwrap();
@@ -682,5 +697,55 @@ mod test {
         println!("{:?}", read_buffer);
 
         drop(file);
+    }
+
+    #[test]
+    fn rollback_nodes() {
+        let source_path = Path::new("test.data");
+        let _ = std::fs::File::create(source_path).unwrap();
+        let opts = OpenOptions::new().read(false).write(true);
+        let key = AeadKey::default();
+        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+
+        let block_size = 4 * 1024;
+        let block_number = 100;
+        const META_OFFSET: u64 = 3072;
+
+        let write_buffer = vec![2u8; block_size];
+        let offset = 5 * block_size as u64 + META_OFFSET;
+        file.write_at(&write_buffer, offset).unwrap();
+
+        // write enought to trigger eviction
+        for i in 10..block_number {
+            let offset = i * block_size as u64 + META_OFFSET;
+            let write_buffer = vec![3u8; block_size];
+            file.write_at(&write_buffer, offset).unwrap();
+        }
+        file.flush().unwrap();
+
+        let mut rollback_nodes = HashMap::new();
+        let mut node1 = FileNode::new(NodeType::Data, 13, 15, EncryptFlags::UserKey);
+        node1.plaintext.as_mut().copy_from_slice(&[3u8; 4096]);
+        let mut node2 = FileNode::new(NodeType::Data, 14, 16, EncryptFlags::UserKey);
+        node2.plaintext.as_mut().copy_from_slice(&[3u8; 4096]);
+        let mut node3 = FileNode::new(NodeType::Data, 15, 17, EncryptFlags::UserKey);
+        node3.plaintext.as_mut().copy_from_slice(&[3u8; 4096]);
+        rollback_nodes.insert(15, Arc::new(RefCell::new(node1)));
+        rollback_nodes.insert(16, Arc::new(RefCell::new(node2)));
+        rollback_nodes.insert(17, Arc::new(RefCell::new(node3)));
+
+        file.rollback_nodes(rollback_nodes).unwrap();
+
+        file.flush().unwrap();
+        drop(file);
+
+        let opts = OpenOptions::new().read(true).write(false);
+        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+
+        let begin_offset = 13 * block_size as u64 + META_OFFSET;
+        let mut read_buffer = vec![0u8; block_size];
+        file.seek(SeekFrom::Start(begin_offset)).unwrap();
+        file.read(&mut read_buffer).unwrap();
+        assert_eq!(read_buffer, vec![3u8; block_size]);
     }
 }
