@@ -6,7 +6,7 @@
 //! All `TxLogStore`'s APIs should be called within transactions (`TX`).
 
 mod chunk;
-mod raw_log;
+pub mod raw_log;
 mod tx_log;
 
 pub use self::tx_log::{TxLog, TxLogId, TxLogStore};

@@ -305,6 +305,7 @@ impl SgxStatus {
 pub enum FsError {
     SgxError(SgxStatus),
     OsError(i32),
+    Errno(Errno),
 }
 
 impl FsError {
@@ -334,6 +335,7 @@ impl FsError {
         match self {
             Self::SgxError(status) => status.is_success(),
             Self::OsError(errno) => *errno == 0,
+            Self::Errno(errno) => false,
         }
     }
 
@@ -341,6 +343,7 @@ impl FsError {
         match self {
             Self::SgxError(status) => IoError::new(ErrorKind::Other, status.as_str()),
             Self::OsError(errno) => IoError::from_raw_os_error(errno),
+            Self::Errno(errno) => IoError::new(ErrorKind::Other, errno.to_str()),
         }
     }
 
@@ -360,6 +363,7 @@ impl FsError {
         let e = match self {
             Self::SgxError(status) => *status as i32,
             Self::OsError(errno) => *errno,
+            Self::Errno(errno) => *errno as i32,
         };
         unsafe { *errno_location() = e }
     }
@@ -369,6 +373,7 @@ impl FsError {
         match self {
             Self::SgxError(status) => crate::Error::with_msg(Errno::SgxError, status.as_str()),
             Self::OsError(errno) => crate::Error::from(errno),
+            Self::Errno(errno) => crate::Error::from(errno),
         }
     }
 }
@@ -378,6 +383,7 @@ impl fmt::Display for FsError {
         match self {
             Self::SgxError(status) => write!(fmt, "sgx error {}", status.as_str()),
             Self::OsError(errno) => write!(fmt, "os error {}", errno),
+            Self::Errno(errno) => write!(fmt, "errno {}", errno.to_str()),
         }
     }
 }

@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::pfs::sys::error::{OsError, ENOENT};
+use crate::pfs::sys::error::{FsError, OsError, ENOENT};
 
 /// The error types used in this crate.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -35,6 +35,28 @@ pub enum Errno {
     TryLockFailed,
     /// Sgx error.
     SgxError,
+}
+
+impl Errno {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Errno::TxAborted => "Transaction aborted",
+            Errno::NotFound => "Not found",
+            Errno::InvalidArgs => "Invalid arguments",
+            Errno::OutOfMemory => "Out of memory",
+            Errno::OutOfDisk => "Out of disk space",
+            Errno::IoFailed => "IO error",
+            Errno::PermissionDenied => "Permission denied",
+            Errno::Unsupported => "Unsupported",
+            Errno::OsSpecUnknown => "OS-specific unknown error",
+            Errno::EncryptFailed => "Encryption operation failed",
+            Errno::DecryptFailed => "Decryption operation failed",
+            Errno::MacMismatched => "MAC (Message Authentication Code) mismatched",
+            Errno::NotBlockSizeAligned => "Not aligned to `BLOCK_SIZE`",
+            Errno::TryLockFailed => "Try lock failed",
+            Errno::SgxError => "Sgx error",
+        }
+    }
 }
 
 /// The error with an error type and an error message used in this crate.
@@ -76,6 +98,12 @@ impl From<OsError> for Error {
             return Error::new(Errno::NotFound);
         }
         Error::new(Errno::OsSpecUnknown)
+    }
+}
+
+impl From<Error> for FsError {
+    fn from(error: Error) -> Self {
+        FsError::Errno(error.errno)
     }
 }
 

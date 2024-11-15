@@ -19,9 +19,9 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 use std::sync::Arc;
 
+pub mod block_file;
 pub mod journal;
 pub mod raw_file;
-
 const MILISECONDS_SLEEP_FOPEN: u32 = 10;
 const MAX_FOPEN_RETRIES: usize = 10;
 pub const RECOVERY_NODE_SIZE: usize = mem::size_of::<u64>() + NODE_SIZE;
