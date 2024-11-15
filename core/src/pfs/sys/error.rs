@@ -335,7 +335,7 @@ impl FsError {
         match self {
             Self::SgxError(status) => status.is_success(),
             Self::OsError(errno) => *errno == 0,
-            Self::Errno(errno) => false,
+            Self::Errno(_) => false,
         }
     }
 
