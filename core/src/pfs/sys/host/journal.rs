@@ -27,12 +27,12 @@ pub struct RawJournal<D> {
 }
 
 impl<D: BlockSet> RawJournal<D> {
-    pub fn create(disk: D) -> FsResult<RawJournal<D>> {
-        Ok(Self {
+    pub fn create(disk: D) -> RawJournal<D> {
+        Self {
             buf: Vec::with_capacity(DEFAULT_BUF_SIZE),
             flush_pos: INNER_OFFSET,
             disk,
-        })
+        }
     }
 
     pub fn append(&mut self, data: &[u8]) -> FsResult {
@@ -76,10 +76,10 @@ pub struct RecoveryJournal<D> {
 }
 
 impl<D: BlockSet> RecoveryJournal<D> {
-    pub fn create(disk: D) -> FsResult<RecoveryJournal<D>> {
-        Ok(Self {
-            raw: RawJournal::create(disk)?,
-        })
+    pub fn create(disk: D) -> RecoveryJournal<D> {
+        Self {
+            raw: RawJournal::create(disk),
+        }
     }
 
     pub fn append(&mut self, data: &[u8]) -> FsResult {
@@ -196,8 +196,15 @@ pub fn recovery<D: BlockSet>(
 mod tests {
     use crate::{
         layers::bio::{MemDisk, BID_SIZE},
-        pfs::sys::host::{journal::RawJournal, RECOVERY_NODE_SIZE},
-        BLOCK_SIZE,
+        pfs::sys::{
+            host::{
+                block_file::BlockFile,
+                journal::{recovery, RawJournal},
+                RECOVERY_NODE_SIZE,
+            },
+            node::NODE_SIZE,
+        },
+        BlockSet, BLOCK_SIZE,
     };
 
     use super::{RecoveryJournal, DEFAULT_BUF_SIZE, INNER_OFFSET};
@@ -205,7 +212,7 @@ mod tests {
     #[test]
     fn read_write_in_buf() {
         let disk = MemDisk::create(128).unwrap();
-        let mut journal = RawJournal::create(disk).unwrap();
+        let mut journal = RawJournal::create(disk);
         journal.append(b"hello").unwrap();
         journal.append(b"world").unwrap();
         journal.flush().unwrap();
@@ -218,7 +225,7 @@ mod tests {
     fn trigger_flush() {
         let disk_size = DEFAULT_BUF_SIZE * 2;
         let disk = MemDisk::create(disk_size).unwrap();
-        let mut journal = RawJournal::create(disk).unwrap();
+        let mut journal = RawJournal::create(disk);
 
         // each buf is 4KB, write enough to trigger flush
         for i in 0..(disk_size / BLOCK_SIZE) {
@@ -241,7 +248,7 @@ mod tests {
     fn recovery_read_write() {
         let disk_size = DEFAULT_BUF_SIZE * 2;
         let disk = MemDisk::create(disk_size).unwrap();
-        let mut journal = RecoveryJournal::create(disk).unwrap();
+        let mut journal = RecoveryJournal::create(disk);
 
         let recovery_block = vec![0u8; RECOVERY_NODE_SIZE];
         journal.append(&recovery_block).unwrap();
@@ -252,5 +259,36 @@ mod tests {
         // data blocks + journal flag(1B) * 2
         let expected_size = RECOVERY_NODE_SIZE + 2;
         assert_eq!(size, expected_size);
+    }
+
+    #[test]
+    fn simple_recovery() {
+        let disk_size = DEFAULT_BUF_SIZE * 2;
+        let block_num = disk_size / BLOCK_SIZE;
+        let disk = MemDisk::create(disk_size).unwrap();
+
+        let data_end = 3 * (BLOCK_SIZE * block_num / 4);
+        let data_disk = disk.subset(0..data_end).unwrap();
+        let journal_disk = disk.subset(data_end..disk_size).unwrap();
+        let mut data_file = BlockFile::create(data_disk);
+        let mut journal = RecoveryJournal::create(journal_disk);
+
+        let round = 10;
+        for i in 0..round {
+            let mut recovery_block = vec![i as u8; RECOVERY_NODE_SIZE];
+            recovery_block.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
+            journal.append(&recovery_block).unwrap();
+        }
+        journal.commit().unwrap();
+        journal.flush().unwrap();
+
+        let rollback_nodes = recovery(&mut data_file, &mut journal).unwrap();
+        assert_eq!(rollback_nodes.len(), 0);
+        for i in 0..round {
+            let recovery_block = vec![i as u8; RECOVERY_NODE_SIZE];
+            let mut buf = vec![0u8; NODE_SIZE];
+            data_file.read(i, &mut buf).unwrap();
+            assert_eq!(buf, recovery_block[8..]);
+        }
     }
 }

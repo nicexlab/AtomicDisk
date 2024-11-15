@@ -461,7 +461,9 @@ mod tests {
             buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
             recover_file.write(i as u64, &buf).unwrap();
         }
+        recover_file.commit().unwrap();
         drop(recover_file);
+
         recovery(source_path, recovery_path).unwrap();
 
         let mut source_file = HostFile::open(source_path, false).unwrap();
@@ -469,7 +471,7 @@ mod tests {
             let mut buf = vec![0u8; NODE_SIZE];
             let expected = vec![i as u8; NODE_SIZE];
             source_file.read(i as u64, &mut buf).unwrap();
-            assert_eq!(buf, expected);
+            assert_eq!(buf, expected, "node {}", i);
         }
     }
 
@@ -555,6 +557,7 @@ mod tests {
             buf.as_mut_slice()[0..8].copy_from_slice(&(i as u64).to_ne_bytes());
             recover_file.write(i as u64, &buf).unwrap();
         }
+        recover_file.commit().unwrap();
         drop(recover_file);
         let recover_file = RecoveryFile::open(recovery_path).unwrap();
         drop(recover_file);

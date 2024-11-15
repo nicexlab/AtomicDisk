@@ -423,11 +423,8 @@ mod tests {
         let (raw_mhts, _) = init_mht([1; 4096]);
         let mut recovery_handler = RecoveryHandler::new(raw_mhts);
 
-        let node = recovery_handler.get_mht_node(1, EncryptFlags::UserKey);
-        println!("{:?}", node);
-
-        let node = recovery_handler.get_mht_node(0, EncryptFlags::UserKey);
-        println!("{:?}", node);
+        let _node = recovery_handler.get_mht_node(1, EncryptFlags::UserKey);
+        let _node = recovery_handler.get_mht_node(0, EncryptFlags::UserKey);
     }
 
     #[test]

@@ -10,17 +10,13 @@ use crate::{
 
 pub struct BlockFile<D: BlockSet> {
     raw_disk: D,
-    offset: usize,
     size: usize,
 }
 
 impl<D: BlockSet> BlockFile<D> {
-    pub fn new(raw_disk: D, offset: usize, length: usize) -> Self {
-        Self {
-            raw_disk,
-            offset,
-            size: length,
-        }
+    pub fn create(raw_disk: D) -> Self {
+        let size = raw_disk.nblocks() * NODE_SIZE;
+        Self { raw_disk, size }
     }
     pub fn read(&mut self, number: u64, buf: &mut [u8]) -> FsResult {
         ensure!(
