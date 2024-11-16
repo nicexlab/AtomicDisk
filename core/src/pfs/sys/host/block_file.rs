@@ -1,3 +1,5 @@
+use log::info;
+
 use crate::{
     bail, ensure,
     layers::{bio::BlockLog, log::raw_log::RawLog},
@@ -18,6 +20,7 @@ pub struct BlockFile<D> {
 
 impl<D: BlockSet> BlockFile<D> {
     pub fn create(raw_disk: D) -> Self {
+        info!("created host file, range [{}, {})", 0, raw_disk.nblocks());
         let size = raw_disk.nblocks() * NODE_SIZE;
         Self { raw_disk, size }
     }

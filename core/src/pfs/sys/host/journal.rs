@@ -1,5 +1,5 @@
 use hashbrown::HashMap;
-use log::debug;
+use log::{debug, info};
 
 use super::{block_file::BlockFile, raw_file::FileStream, HostFs, JournalFlag};
 use crate::{
@@ -92,6 +92,11 @@ pub struct RecoveryJournal<D> {
 
 impl<D: BlockSet> RecoveryJournal<D> {
     pub fn create(disk: D) -> RecoveryJournal<D> {
+        info!(
+            "created recovery journal, range [{}, {})",
+            0,
+            disk.nblocks()
+        );
         Self {
             raw: RawJournal::create(disk),
         }

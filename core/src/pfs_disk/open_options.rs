@@ -158,7 +158,10 @@ impl OpenOptions {
         path: P,
         disk: D,
     ) -> Result<PfsDisk<D>> {
-        let file = create_pfs_file(path.as_ref(), disk)?;
+        let mut file = create_pfs_file(path.as_ref(), disk)?;
+        let new_len = PFS_INNER_OFFSET
+            + PfsDisk::<D>::total_data_blocks(self.total_blocks.unwrap()) * BLOCK_SIZE;
+        write_zeros(&mut file, 0, new_len);
         let pfs_disk = PfsDisk {
             file: Mutex::new(file),
             path: path.as_ref().to_path_buf(),
@@ -193,7 +196,7 @@ fn create_pfs_file<P: AsRef<Path>, D: BlockSet>(path: P, disk: D) -> Result<PfsF
 
 fn write_zeros<D: BlockSet>(pfs_file: &mut PfsFile<D>, begin: usize, end: usize) {
     debug_assert!(begin <= end);
-
+    info!("write zeros from {} to {}", begin, end);
     const ZEROS: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];
 
     pfs_file.seek(SeekFrom::Start(begin as u64)).unwrap();

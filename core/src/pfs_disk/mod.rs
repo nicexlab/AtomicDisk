@@ -157,6 +157,9 @@ impl<D: BlockSet> PfsDisk<D> {
         let end_offset = end_block * BLOCK_SIZE;
         Ok((begin_offset, end_offset))
     }
+    fn total_data_blocks(total_blocks: usize) -> usize {
+        total_blocks * 13 / 16
+    }
 }
 
 // impl BlockDevice for PfsDisk {
@@ -213,6 +216,17 @@ mod test {
         Buf,
     };
     use core::ptr::NonNull;
+    use std::sync::Once;
+    static INIT_LOG: Once = Once::new();
+    pub fn init_logger() {
+        INIT_LOG.call_once(|| {
+            env_logger::builder()
+                .is_test(true)
+                .filter_level(log::LevelFilter::Debug)
+                .try_init()
+                .unwrap();
+        });
+    }
 
     #[test]
     fn test_read_write() {
@@ -229,10 +243,11 @@ mod test {
 
     #[test]
     fn multi_block_read_write() {
-        let disk = MemDisk::create(10100).unwrap();
-        let disk = PfsDisk::create("test.disk", 10100, disk).unwrap();
+        init_logger();
+        let disk = MemDisk::create(11000).unwrap();
+        let disk = PfsDisk::create("test.disk", 11000, disk).unwrap();
 
-        let block_count = 10000;
+        let block_count = 8000;
         for i in 0..block_count {
             let data_buf = vec![i as u8; BLOCK_SIZE];
             let buf = BufRef::try_from(data_buf.as_slice()).unwrap();
@@ -244,6 +259,5 @@ mod test {
             disk.read(i, read_buf.as_mut()).unwrap();
             assert_eq!(read_buf.as_slice(), &[i as u8; BLOCK_SIZE]);
         }
-        std::fs::remove_file("test.disk").unwrap();
     }
 }

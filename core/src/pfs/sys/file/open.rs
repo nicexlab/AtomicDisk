@@ -16,6 +16,7 @@
 // under the License..
 
 use hashbrown::HashMap;
+use log::info;
 
 use crate::layers::bio::MemDisk;
 use crate::pfs::sys::cache::LruCache;
