@@ -125,7 +125,7 @@ impl_blockset_for!(Arc<T>, "(**self)", |this: &Arc<T>, range| {
 /// A disk that impl `BlockSet`.
 ///
 /// The `region` is the accessible subset.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MemDisk {
     disk: Arc<Mutex<Buf>>,
     region: Range<BlockId>,

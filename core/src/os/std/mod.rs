@@ -90,6 +90,7 @@ impl PageAllocator {
 }
 
 /// A struct for `PAGE_SIZE` aligned memory buffer.
+#[derive(Clone, Debug)]
 pub struct Pages {
     ptr: NonNull<u8>,
     len: usize,

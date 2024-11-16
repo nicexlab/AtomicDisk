@@ -18,9 +18,9 @@
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
 use crate::pfs::sys::file::{CloseMode, FileInner, FileStatus};
 use crate::pfs::sys::host;
-use crate::{bail, ensure, AeadKey};
+use crate::{bail, ensure, AeadKey, BlockSet};
 
-impl FileInner {
+impl<D: BlockSet> FileInner<D> {
     pub fn close(&mut self, mode: CloseMode) -> FsResult<Option<AeadKey>> {
         match mode {
             CloseMode::Import | CloseMode::Export => {

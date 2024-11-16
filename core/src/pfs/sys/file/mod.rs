@@ -20,6 +20,7 @@ use hashbrown::HashMap;
 use crate::bail;
 use crate::ensure;
 use crate::eos;
+use crate::layers::bio::MemDisk;
 use crate::pfs::sgx::KeyPolicy;
 use crate::pfs::sys::cache::LruCache;
 use crate::pfs::sys::error::{FsError, FsResult};
@@ -29,6 +30,7 @@ use crate::pfs::sys::node::{FileNode, FileNodeRef};
 use crate::pfs::sys::EncryptMode;
 use crate::AeadKey;
 use crate::AeadMac;
+use crate::BlockSet;
 
 use core::cell::RefCell;
 use std::io::SeekFrom;
@@ -39,6 +41,7 @@ use std::sync::Mutex;
 
 use super::error::SgxStatus;
 use super::error::EINVAL;
+use super::host::block_file::BlockFile;
 use super::host::HostFile;
 
 mod close;
@@ -50,13 +53,13 @@ mod read;
 mod write;
 
 #[derive(Debug)]
-pub struct ProtectedFile {
-    file: Mutex<FileInner>,
+pub struct ProtectedFile<D> {
+    file: Mutex<FileInner<D>>,
 }
 
 #[derive(Debug)]
-pub struct FileInner {
-    host_file: HostFile,
+pub struct FileInner<D> {
+    host_file: BlockFile<D>,
     metadata: MetadataInfo,
     root_mht: FileNodeRef,
     key_gen: FsKeyGen,
@@ -71,14 +74,15 @@ pub struct FileInner {
     cache: LruCache<FileNode>,
 }
 
-impl ProtectedFile {
+impl<D: BlockSet> ProtectedFile<D> {
     pub fn open<P: AsRef<Path>>(
+        disk: D,
         path: P,
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
     ) -> FsResult<Self> {
-        let file = FileInner::open(path.as_ref(), opts, mode, cache_size)?;
+        let file = FileInner::open(path.as_ref(), disk, opts, mode, cache_size)?;
         Ok(Self {
             file: Mutex::new(file),
         })
@@ -276,7 +280,7 @@ impl ProtectedFile {
     }
 
     pub fn remove<P: AsRef<Path>>(path: P) -> FsResult {
-        FileInner::remove(path.as_ref())
+        FileInner::<D>::remove(path.as_ref())
     }
 
     #[cfg(test)]
@@ -543,7 +547,9 @@ mod test {
         let file_path = Path::new("test.data");
         let _ = std::fs::File::create(file_path).unwrap();
         let opts = OpenOptions::new().read(false).write(true).append(false);
+        let disk = MemDisk::create(1024).unwrap();
         let file = ProtectedFile::open(
+            disk,
             file_path,
             &opts,
             &OpenMode::UserKey(AeadKey::default()),
@@ -553,15 +559,6 @@ mod test {
         file.write(b"hello").unwrap();
         file.flush().unwrap();
 
-        drop(file);
-        let opts = OpenOptions::new().read(true).write(false).append(false);
-        let file = ProtectedFile::open(
-            file_path,
-            &opts,
-            &OpenMode::UserKey(AeadKey::default()),
-            None,
-        )
-        .unwrap();
         let mut read_buffer = vec![0u8; 5];
         file.read(&mut read_buffer).unwrap();
         assert_eq!(read_buffer, b"hello");
@@ -593,10 +590,11 @@ mod test {
         init_logger();
         let file_path = Path::new("test.data");
         let _ = std::fs::File::create(file_path).unwrap();
-
+        let disk = MemDisk::create(1024).unwrap();
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(false).append(true);
-        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+        let file =
+            ProtectedFile::open(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -605,9 +603,6 @@ mod test {
             file.write(&write_buffer).unwrap();
         }
         file.flush().unwrap();
-        drop(file);
-        let opts = OpenOptions::new().read(true).write(false).append(false);
-        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let mut read_buffer = vec![0u8; block_size];
         for _ in 0..block_number {
@@ -621,10 +616,11 @@ mod test {
         init_logger();
         let file_path = Path::new("test.data");
         let _ = std::fs::File::create(file_path).unwrap();
-
+        let disk = MemDisk::create(1024).unwrap();
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(true);
-        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+        let file =
+            ProtectedFile::open(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -640,9 +636,6 @@ mod test {
         file.seek(pos).unwrap();
         file.write(&write_buffer).unwrap();
         file.flush().unwrap();
-        drop(file);
-        let opts = OpenOptions::new().read(true).write(false);
-        let file = ProtectedFile::open(file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let mut read_buffer = vec![0u8; block_size];
         file.seek(pos).unwrap();
@@ -657,7 +650,9 @@ mod test {
         let _ = std::fs::File::create(source_path).unwrap();
         let opts = OpenOptions::new().read(false).write(true);
         let key = AeadKey::default();
-        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+        let disk = MemDisk::create(1024).unwrap();
+        let file =
+            ProtectedFile::open(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -685,11 +680,6 @@ mod test {
             file.write_at(&write_buffer, offset).unwrap();
         }
 
-        drop(file);
-
-        let opts = OpenOptions::new().read(true).write(false);
-        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
-
         let mut read_buffer = vec![0u8; block_size];
         file.seek(SeekFrom::Start(offset)).unwrap();
         file.read(&mut read_buffer).unwrap();
@@ -705,7 +695,9 @@ mod test {
         let _ = std::fs::File::create(source_path).unwrap();
         let opts = OpenOptions::new().read(false).write(true);
         let key = AeadKey::default();
-        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+        let disk = MemDisk::create(1024).unwrap();
+        let file =
+            ProtectedFile::open(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -737,10 +729,6 @@ mod test {
         file.rollback_nodes(rollback_nodes).unwrap();
 
         file.flush().unwrap();
-        drop(file);
-
-        let opts = OpenOptions::new().read(true).write(false);
-        let file = ProtectedFile::open(source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let begin_offset = 13 * block_size as u64 + META_OFFSET;
         let mut read_buffer = vec![0u8; block_size];

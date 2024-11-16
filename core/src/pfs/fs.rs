@@ -18,7 +18,7 @@
 use super::sgx::KeyPolicy;
 use crate::pfs::sys as fs_imp;
 use crate::prelude::Result;
-use crate::{AeadKey, AeadMac};
+use crate::{AeadKey, AeadMac, BlockSet};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::unix::fs::FileExt;
 use std::path::Path;
@@ -54,160 +54,171 @@ pub struct EncryptMode(fs_imp::EncryptMode);
 /// that the file contains internally.
 ///
 /// SgxFiles are automatically closed when they go out of scope.
-pub struct SgxFile {
-    inner: fs_imp::SgxFile,
+pub struct SgxFile<D> {
+    inner: fs_imp::SgxFile<D>,
 }
 
-unsafe impl Send for SgxFile {}
-unsafe impl Sync for SgxFile {}
+unsafe impl<D: BlockSet> Send for SgxFile<D> {}
+unsafe impl<D: BlockSet> Sync for SgxFile<D> {}
 
 /// Read the entire contents of a file into a bytes vector.
 
-pub fn read<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
-    let mut file = SgxFile::open(path)?;
-    let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
-    file.read_to_end(&mut bytes)?;
-    Ok(bytes)
-}
+// pub fn read<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
+//     let mut file = SgxFile::open(path)?;
+//     let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
+//     file.read_to_end(&mut bytes)?;
+//     Ok(bytes)
+// }
 
-/// Read the entire contents of a file into a string.
+// /// Read the entire contents of a file into a string.
 
-pub fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
-    let mut file = SgxFile::open(path)?;
-    let mut string = String::with_capacity(buffer_capacity_required(&file));
-    file.read_to_string(&mut string)?;
-    Ok(string)
-}
+// pub fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
+//     let mut file = SgxFile::open(path)?;
+//     let mut string = String::with_capacity(buffer_capacity_required(&file));
+//     file.read_to_string(&mut string)?;
+//     Ok(string)
+// }
 
-/// Write a slice as the entire contents of a file.
+// /// Write a slice as the entire contents of a file.
 
-pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result<()> {
-    SgxFile::create(path)?.write_all(contents.as_ref())
-}
+// pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result<()> {
+//     SgxFile::create(path)?.write_all(contents.as_ref())
+// }
 
-pub fn read_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<Vec<u8>> {
-    let mut file = SgxFile::open_with_key(path, key)?;
-    let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
-    file.read_to_end(&mut bytes)?;
-    Ok(bytes)
-}
+// pub fn read_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<Vec<u8>> {
+//     let mut file = SgxFile::open_with_key(path, key)?;
+//     let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
+//     file.read_to_end(&mut bytes)?;
+//     Ok(bytes)
+// }
 
-pub fn read_to_string_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<String> {
-    let mut file = SgxFile::open_with_key(path, key)?;
-    let mut string = String::with_capacity(buffer_capacity_required(&file));
-    file.read_to_string(&mut string)?;
-    Ok(string)
-}
+// pub fn read_to_string_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<String> {
+//     let mut file = SgxFile::open_with_key(path, key)?;
+//     let mut string = String::with_capacity(buffer_capacity_required(&file));
+//     file.read_to_string(&mut string)?;
+//     Ok(string)
+// }
 
-pub fn write_with_key<P: AsRef<Path>, C: AsRef<[u8]>>(
-    path: P,
-    key: AeadKey,
-    contents: C,
-) -> io::Result<()> {
-    SgxFile::create_with_key(path, key)?.write_all(contents.as_ref())
-}
+// pub fn write_with_key<P: AsRef<Path>, C: AsRef<[u8]>>(
+//     path: P,
+//     key: AeadKey,
+//     contents: C,
+// ) -> io::Result<()> {
+//     SgxFile::create_with_key(path, key)?.write_all(contents.as_ref())
+// }
 
-pub fn read_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
-    let mut file = SgxFile::open_integrity_only(path)?;
-    let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
-    file.read_to_end(&mut bytes)?;
-    Ok(bytes)
-}
+// pub fn read_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
+//     let mut file = SgxFile::open_integrity_only(path)?;
+//     let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
+//     file.read_to_end(&mut bytes)?;
+//     Ok(bytes)
+// }
 
-pub fn read_to_string_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<String> {
-    let mut file = SgxFile::open_integrity_only(path)?;
-    let mut string = String::with_capacity(buffer_capacity_required(&file));
-    file.read_to_string(&mut string)?;
-    Ok(string)
-}
+// pub fn read_to_string_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<String> {
+//     let mut file = SgxFile::open_integrity_only(path)?;
+//     let mut string = String::with_capacity(buffer_capacity_required(&file));
+//     file.read_to_string(&mut string)?;
+//     Ok(string)
+// }
 
-pub fn write_integrity_only<P: AsRef<Path>, C: AsRef<[u8]>>(
-    path: P,
-    contents: C,
-) -> io::Result<()> {
-    SgxFile::create_integrity_only(path)?.write_all(contents.as_ref())
-}
+// pub fn write_integrity_only<P: AsRef<Path>, C: AsRef<[u8]>>(
+//     path: P,
+//     contents: C,
+// ) -> io::Result<()> {
+//     SgxFile::create_integrity_only(path)?.write_all(contents.as_ref())
+// }
 
-impl SgxFile {
+impl<D: BlockSet> SgxFile<D> {
     //#[cfg(feature = "tfs")]
-    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<SgxFile> {
-        OpenOptions::new().read(true).open(path.as_ref())
+    pub fn open<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
+        OpenOptions::new().read(true).open(disk, path.as_ref())
     }
 
     //#[cfg(feature = "tfs")]
-    pub fn create<P: AsRef<Path>>(path: P) -> io::Result<SgxFile> {
-        OpenOptions::new().write(true).open(path.as_ref())
+    pub fn create<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
+        OpenOptions::new().write(true).open(disk, path.as_ref())
     }
 
     //#[cfg(feature = "tfs")]
-    pub fn append<P: AsRef<Path>>(path: P) -> io::Result<SgxFile> {
-        OpenOptions::new().append(true).open(path.as_ref())
+    pub fn append<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
+        OpenOptions::new().append(true).open(disk, path.as_ref())
     }
 
-    pub fn open_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<SgxFile> {
+    pub fn open_with_key<P: AsRef<Path>>(disk: D, path: P, key: AeadKey) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .read(true)
-            .open_with_key(path.as_ref(), key)
+            .open_with_key(disk, path.as_ref(), key)
     }
 
-    pub fn create_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<SgxFile> {
+    pub fn create_with_key<P: AsRef<Path>>(
+        disk: D,
+        path: P,
+        key: AeadKey,
+    ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
-            .open_with_key(path.as_ref(), key)
+            .open_with_key(disk, path.as_ref(), key)
     }
 
-    pub fn append_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<SgxFile> {
+    pub fn append_with_key<P: AsRef<Path>>(
+        disk: D,
+        path: P,
+        key: AeadKey,
+    ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
-            .open_with_key(path.as_ref(), key)
+            .open_with_key(disk, path.as_ref(), key)
     }
 
-    pub fn open_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<SgxFile> {
+    pub fn open_integrity_only<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .read(true)
-            .open_integrity_only(path.as_ref())
+            .open_integrity_only(disk, path.as_ref())
     }
 
-    pub fn create_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<SgxFile> {
+    pub fn create_integrity_only<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
-            .open_integrity_only(path.as_ref())
+            .open_integrity_only(disk, path.as_ref())
     }
 
-    pub fn append_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<SgxFile> {
+    pub fn append_integrity_only<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
-            .open_integrity_only(path.as_ref())
+            .open_integrity_only(disk, path.as_ref())
     }
 
     pub fn open_with<P: AsRef<Path>>(
+        disk: D,
         path: P,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> io::Result<SgxFile> {
+    ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .read(true)
-            .open_with(path.as_ref(), encrypt_mode, cache_size)
+            .open_with(disk, path.as_ref(), encrypt_mode, cache_size)
     }
 
     pub fn create_with<P: AsRef<Path>>(
+        disk: D,
         path: P,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> io::Result<SgxFile> {
+    ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
-            .open_with(path.as_ref(), encrypt_mode, cache_size)
+            .open_with(disk, path.as_ref(), encrypt_mode, cache_size)
     }
 
     pub fn append_with<P: AsRef<Path>>(
+        disk: D,
         path: P,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> io::Result<SgxFile> {
+    ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
-            .open_with(path.as_ref(), encrypt_mode, cache_size)
+            .open_with(disk, path.as_ref(), encrypt_mode, cache_size)
     }
 
     pub fn options() -> OpenOptions {
@@ -248,7 +259,7 @@ impl SgxFile {
 }
 
 /// Indicates how much extra capacity is needed to read the rest of the file.
-fn buffer_capacity_required(file: &SgxFile) -> usize {
+fn buffer_capacity_required<D: BlockSet>(file: &SgxFile<D>) -> usize {
     let size = file.file_size().unwrap_or(0);
     let pos = file.tell().unwrap_or(0);
     // Don't worry about `usize` overflow because reading will fail regardless
@@ -256,13 +267,13 @@ fn buffer_capacity_required(file: &SgxFile) -> usize {
     size.saturating_sub(pos) as usize
 }
 
-impl Read for SgxFile {
+impl<D: BlockSet> Read for SgxFile<D> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
     }
 }
 
-impl Write for SgxFile {
+impl<D: BlockSet> Write for SgxFile<D> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.inner.write(buf)
     }
@@ -271,19 +282,19 @@ impl Write for SgxFile {
     }
 }
 
-impl Seek for SgxFile {
+impl<D: BlockSet> Seek for SgxFile<D> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         self.inner.seek(pos)
     }
 }
 
-impl Read for &SgxFile {
+impl<D: BlockSet> Read for &SgxFile<D> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
     }
 }
 
-impl Write for &SgxFile {
+impl<D: BlockSet> Write for &SgxFile<D> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.inner.write(buf)
     }
@@ -292,13 +303,13 @@ impl Write for &SgxFile {
     }
 }
 
-impl Seek for &SgxFile {
+impl<D: BlockSet> Seek for &SgxFile<D> {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         self.inner.seek(pos)
     }
 }
 
-impl FileExt for SgxFile {
+impl<D: BlockSet> FileExt for SgxFile<D> {
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
         self.inner.read_at(buf, offset)
     }
@@ -309,7 +320,7 @@ impl FileExt for SgxFile {
 }
 
 #[cfg(feature = "tfs")]
-impl Map for SgxFile {
+impl<D: BlockSet> Map for SgxFile<D> {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> OsResult<usize> {
         self.inner
             .read_at(buf, offset as u64)
@@ -328,9 +339,9 @@ impl Map for SgxFile {
     }
 }
 
-pub fn remove<P: AsRef<Path>>(path: P) -> io::Result<()> {
-    fs_imp::remove(path.as_ref())
-}
+// pub fn remove<P: AsRef<Path>>(path: P) -> io::Result<()> {
+//     fs_imp::remove(path.as_ref())
+// }
 
 #[cfg(feature = "tfs")]
 pub fn export_key<P: AsRef<Path>>(path: P) -> io::Result<Key128bit> {
@@ -384,25 +395,35 @@ impl OpenOptions {
 
     /// Opens a file at `path` with the options specified by `self`.
 
-    pub fn open<P: AsRef<Path>>(&self, path: P) -> io::Result<SgxFile> {
-        self.open_with(path, EncryptMode::auto_key(None), None)
+    pub fn open<P: AsRef<Path>, D: BlockSet>(&self, disk: D, path: P) -> io::Result<SgxFile<D>> {
+        self.open_with(disk, path, EncryptMode::auto_key(None), None)
     }
 
-    pub fn open_with_key<P: AsRef<Path>>(&self, path: P, key: AeadKey) -> io::Result<SgxFile> {
-        self.open_with(path, EncryptMode::user_key(key), None)
-    }
-
-    pub fn open_integrity_only<P: AsRef<Path>>(&self, path: P) -> io::Result<SgxFile> {
-        self.open_with(path, EncryptMode::integrity_only(), None)
-    }
-
-    pub fn open_with<P: AsRef<Path>>(
+    pub fn open_with_key<P: AsRef<Path>, D: BlockSet>(
         &self,
+        disk: D,
+        path: P,
+        key: AeadKey,
+    ) -> io::Result<SgxFile<D>> {
+        self.open_with(disk, path, EncryptMode::user_key(key), None)
+    }
+
+    pub fn open_integrity_only<P: AsRef<Path>, D: BlockSet>(
+        &self,
+        disk: D,
+        path: P,
+    ) -> io::Result<SgxFile<D>> {
+        self.open_with(disk, path, EncryptMode::integrity_only(), None)
+    }
+
+    pub fn open_with<P: AsRef<Path>, D: BlockSet>(
+        &self,
+        disk: D,
         path: P,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> io::Result<SgxFile> {
-        let inner = fs_imp::SgxFile::open(path, &self.0, &encrypt_mode.0, cache_size)?;
+    ) -> io::Result<SgxFile<D>> {
+        let inner = fs_imp::SgxFile::open(disk, path, &self.0, &encrypt_mode.0, cache_size)?;
         Ok(SgxFile { inner })
     }
 }

@@ -25,7 +25,7 @@ mod node;
 
 use crate::pfs::sys::error::FsError;
 use crate::pfs::sys::file::{self as file_imp, ProtectedFile};
-use crate::{AeadKey, AeadMac};
+use crate::{AeadKey, AeadMac, BlockSet};
 use std::boxed::Box;
 use std::io::{self, SeekFrom};
 use std::mem::ManuallyDrop;
@@ -84,18 +84,19 @@ impl Default for OpenOptions {
 }
 
 #[derive(Debug)]
-pub struct SgxFile {
-    file: Box<ProtectedFile>,
+pub struct SgxFile<D> {
+    file: Box<ProtectedFile<D>>,
 }
 
-impl SgxFile {
+impl<D: BlockSet> SgxFile<D> {
     pub fn open<P: AsRef<Path>>(
+        disk: D,
         path: P,
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,
-    ) -> io::Result<SgxFile> {
-        ProtectedFile::open(path, &opts.0, &encrypt_mode.into(), cache_size)
+    ) -> io::Result<SgxFile<D>> {
+        ProtectedFile::open(disk, path, &opts.0, &encrypt_mode.into(), cache_size)
             .map_err(|e| {
                 e.set_errno();
                 e.to_io_error()
@@ -219,55 +220,55 @@ impl SgxFile {
     }
 }
 
-#[allow(dead_code)]
-pub type RawProtectedFile = *const std::ffi::c_void;
+// #[allow(dead_code)]
+// pub type RawProtectedFile = *const std::ffi::c_void;
 
-#[allow(dead_code)]
-impl SgxFile {
-    pub fn into_raw(self) -> RawProtectedFile {
-        let file = ManuallyDrop::new(self);
-        file.file.as_ref() as *const _ as RawProtectedFile
-    }
+// #[allow(dead_code)]
+// impl<D: BlockSet> SgxFile<D> {
+//     pub fn into_raw(self) -> RawProtectedFile {
+//         let file = ManuallyDrop::new(self);
+//         file.file.as_ref() as *const _ as RawProtectedFile
+//     }
 
-    /// # Safety
-    pub unsafe fn from_raw(raw: RawProtectedFile) -> Self {
-        let file = Box::from_raw(raw as *mut ProtectedFile);
-        Self { file }
-    }
-}
+//     /// # Safety
+//     pub unsafe fn from_raw(raw: RawProtectedFile) -> Self {
+//         let file = Box::from_raw(raw as *mut ProtectedFile);
+//         Self { file }
+//     }
+// }
 
-impl Drop for SgxFile {
-    fn drop(&mut self) {
-        let _ = self.file.close();
-    }
-}
+// impl<D: BlockSet> Drop for SgxFile<D> {
+//     fn drop(&mut self) {
+//         let _ = self.file.close();
+//     }
+// }
 
-#[inline]
-pub fn remove<P: AsRef<Path>>(path: P) -> io::Result<()> {
-    ProtectedFile::remove(path).map_err(|e| {
-        e.set_errno();
-        e.to_io_error()
-    })
-}
+// #[inline]
+// pub fn remove<P: AsRef<Path>>(path: P) -> io::Result<()> {
+//     ProtectedFile::remove(path).map_err(|e| {
+//         e.set_errno();
+//         e.to_io_error()
+//     })
+// }
 
-#[cfg(feature = "tfs")]
-#[inline]
-pub fn export_key<P: AsRef<Path>>(path: P) -> Result<Key128bit> {
-    ProtectedFile::export_key(path).map_err(|e| {
-        e.set_errno();
-        e.to_io_error()
-    })
-}
+// #[cfg(feature = "tfs")]
+// #[inline]
+// pub fn export_key<P: AsRef<Path>>(path: P) -> Result<Key128bit> {
+//     ProtectedFile::export_key(path).map_err(|e| {
+//         e.set_errno();
+//         e.to_io_error()
+//     })
+// }
 
-#[cfg(feature = "tfs")]
-#[inline]
-pub fn import_key<P: AsRef<Path>>(
-    path: P,
-    key: Key128bit,
-    key_policy: Option<KeyPolicy>,
-) -> Result<()> {
-    ProtectedFile::import_key(path, key, key_policy).map_err(|e| {
-        e.set_errno();
-        e.to_io_error()
-    })
-}
+// #[cfg(feature = "tfs")]
+// #[inline]
+// pub fn import_key<P: AsRef<Path>>(
+//     path: P,
+//     key: Key128bit,
+//     key_policy: Option<KeyPolicy>,
+// ) -> Result<()> {
+//     ProtectedFile::import_key(path, key, key_policy).map_err(|e| {
+//         e.set_errno();
+//         e.to_io_error()
+//     })
+// }

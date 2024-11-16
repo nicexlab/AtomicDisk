@@ -19,13 +19,13 @@ use crate::pfs::sys::error::{FsResult, EACCES};
 use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNodeRef, NODE_SIZE};
-use crate::{bail, ensure, eos};
+use crate::{bail, ensure, eos, BlockSet};
 use std::io::SeekFrom;
 
 #[cfg(feature = "tfs")]
 use sgx_trts::trts::EnclaveRange;
 
-impl FileInner {
+impl<D: BlockSet> FileInner<D> {
     pub fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
         if buf.is_empty() {
             return Ok(0);

@@ -8,6 +8,7 @@ use crate::os::Mutex;
 use crate::pfs::fs::OpenOptions as PfsOpenOptions;
 use crate::pfs::fs::SgxFile as PfsFile;
 use crate::AeadKey;
+use crate::BlockSet;
 use crate::{prelude::*, Errno};
 /// Options that are used to configure how a PFS disk is opened.
 pub struct OpenOptions {
@@ -72,7 +73,7 @@ impl OpenOptions {
     }
 
     /// Opens a PFS disk at `path` with the options specified by `self`.
-    pub fn open<P: AsRef<Path>>(&self, path: P) -> Result<PfsDisk> {
+    pub fn open<P: AsRef<Path>, D: BlockSet>(&self, path: P, disk: D) -> Result<PfsDisk<D>> {
         if !self.read && !self.write {
             return_errno_with_msg!(Errno::IoFailed, "the disk must be readable or writable")
         }
@@ -83,24 +84,22 @@ impl OpenOptions {
         // Open or create the PFS file
         let mut file_exists = false;
         let mut pfs_file = {
-            let mut pfs_file_opt = None;
-
             // If not create_new, then we should first try to open it
-            if !self.create_new {
-                pfs_file_opt = match open_pfs_file(path.as_ref()) {
-                    Ok(file) => {
-                        file_exists = true;
-                        Some(file)
-                    }
-                    Err(e) if e.errno() == Errno::NotFound => None,
-                    Err(e) => return Err(e),
-                };
-            }
+            //     if !self.create_new {
+            let pfs_file_opt = match open_pfs_file(path.as_ref(), disk) {
+                Ok(file) => {
+                    file_exists = true;
+                    Some(file)
+                }
+                Err(e) if e.errno() == Errno::NotFound => None,
+                Err(e) => return Err(e),
+            };
+            //   }
 
             // If we haven't opened one, then create it
-            if pfs_file_opt.is_none() && (self.create || self.create_new) {
-                pfs_file_opt = Some(create_pfs_file(path.as_ref())?);
-            }
+            // if pfs_file_opt.is_none() && (self.create || self.create_new) {
+            //     pfs_file_opt = Some(create_pfs_file(path.as_ref(), disk)?);
+            // }
 
             match pfs_file_opt {
                 Some(pfs_file) => pfs_file,
@@ -152,27 +151,27 @@ impl OpenOptions {
 }
 
 /// Open an existing PFS file with read and write permissions.
-fn open_pfs_file<P: AsRef<Path>>(path: P) -> Result<PfsFile> {
+fn open_pfs_file<P: AsRef<Path>, D: BlockSet>(path: P, disk: D) -> Result<PfsFile<D>> {
     let ret = PfsOpenOptions::new()
         .read(true)
         .update(true)
-        .open_with_key(path.as_ref(), AeadKey::default())
+        .open_with_key(disk, path.as_ref(), AeadKey::default())
         .map_err(|e| e.raw_os_error().unwrap().into());
     ret
 }
 
 /// Create a PFS file with read and write permissions. The length of the
 /// opened file is zero.
-fn create_pfs_file<P: AsRef<Path>>(path: P) -> Result<PfsFile> {
+fn create_pfs_file<P: AsRef<Path>, D: BlockSet>(path: P, disk: D) -> Result<PfsFile<D>> {
     let ret = PfsOpenOptions::new()
         .write(true)
         .update(true)
-        .open_with_key(path.as_ref(), AeadKey::default())
+        .open_with_key(disk, path.as_ref(), AeadKey::default())
         .map_err(|e| e.raw_os_error().unwrap().into());
     ret
 }
 
-fn write_zeros(pfs_file: &mut PfsFile, begin: usize, end: usize) {
+fn write_zeros<D: BlockSet>(pfs_file: &mut PfsFile<D>, begin: usize, end: usize) {
     debug_assert!(begin <= end);
 
     const ZEROS: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];

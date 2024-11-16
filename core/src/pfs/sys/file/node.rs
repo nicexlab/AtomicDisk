@@ -22,9 +22,9 @@ use crate::pfs::sys::file::{FileInner, FileStatus};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType};
 use crate::pfs::sys::node::{ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE};
-use crate::{bail, ensure, eos};
+use crate::{bail, ensure, eos, BlockSet};
 
-impl FileInner {
+impl<D: BlockSet> FileInner<D> {
     pub fn get_data_node(&mut self) -> FsResult<FileNodeRef> {
         ensure!(
             self.offset >= MD_USER_DATA_SIZE,
@@ -278,16 +278,18 @@ impl FileInner {
 }
 
 mod tests {
+    use crate::layers::bio::MemDisk;
+
     use super::*;
 
     #[test]
     fn test_is_data_node() {
-        assert!(!FileInner::is_data_node(0));
-        assert!(FileInner::is_data_node(1));
-        assert!(FileInner::is_data_node(2));
-        assert!(!FileInner::is_data_node(98));
-        assert!(FileInner::is_data_node(99));
-        assert!(FileInner::is_data_node(194));
-        assert!(!FileInner::is_data_node(195));
+        assert!(!FileInner::<MemDisk>::is_data_node(0));
+        assert!(FileInner::<MemDisk>::is_data_node(1));
+        assert!(FileInner::<MemDisk>::is_data_node(2));
+        assert!(!FileInner::<MemDisk>::is_data_node(98));
+        assert!(FileInner::<MemDisk>::is_data_node(99));
+        assert!(FileInner::<MemDisk>::is_data_node(194));
+        assert!(!FileInner::<MemDisk>::is_data_node(195));
     }
 }

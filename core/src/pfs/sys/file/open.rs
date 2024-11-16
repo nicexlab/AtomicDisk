@@ -17,11 +17,14 @@
 
 use hashbrown::HashMap;
 
+use crate::layers::bio::MemDisk;
 use crate::pfs::sys::cache::LruCache;
 use crate::pfs::sys::error::{
     FsError, FsResult, SgxStatus, EACCES, EINVAL, ENAMETOOLONG, ENOENT, ENOTSUP,
 };
 use crate::pfs::sys::file::{FileInner, FileStatus, OpenMode, OpenOptions};
+use crate::pfs::sys::host::block_file::BlockFile;
+use crate::pfs::sys::host::journal::RecoveryJournal;
 use crate::pfs::sys::host::raw_file::RecoveryFile;
 use crate::pfs::sys::host::{self, HostFile, HostFs, RecoveryHandler, RECOVERY_NODE_SIZE};
 use crate::pfs::sys::keys::{FsKeyGen, RestoreKey};
@@ -30,7 +33,7 @@ use crate::pfs::sys::metadata::{
     FILENAME_MAX_LEN, FULLNAME_MAX_LEN, MD_USER_DATA_SIZE, SGX_FILE_ID, SGX_FILE_MAJOR_VERSION,
 };
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType, NODE_SIZE};
-use crate::{bail, ensure, eos, AeadKey};
+use crate::{bail, ensure, eos, AeadKey, BlockSet};
 
 use core::cell::RefCell;
 use std::borrow::ToOwned;
@@ -46,9 +49,10 @@ macro_rules! is_page_aligned {
 
 pub const DEFAULT_CACHE_SIZE: usize = 48 * SE_PAGE_SIZE;
 
-impl FileInner {
+impl<D: BlockSet> FileInner<D> {
     pub fn open(
         path: &Path,
+        disk: D,
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
@@ -65,10 +69,14 @@ impl FileInner {
 
         let key_gen = FsKeyGen::new(mode)?;
 
-        Self::check_file_exist(opts, mode, path)?;
+        //Self::check_file_exist(opts, mode, path)?;
 
-        let mut host_file = HostFile::open(path, opts.readonly())?;
-        let file_size = host_file.size();
+        // TODO: pass host_file and journal outside
+        // 10MB
+        let mut host_file = BlockFile::create(Self::subdisk_for_data(&disk)?);
+
+        let mut journal = RecoveryJournal::create(Self::subdisk_for_journal(&disk)?);
+        let file_size = host_file.size()?;
 
         let mut recovery_file_name = file_name.to_owned();
         recovery_file_name.push_str("_recovery");
@@ -76,27 +84,27 @@ impl FileInner {
 
         let mut need_writing = false;
         let mut offset = 0;
-        let (host_file, metadata, root_mht, rollback_nodes) = if file_size > 0 {
+        let (metadata, root_mht, rollback_nodes) = if file_size > 0 {
             // existing file
             ensure!(!opts.write, eos!(EACCES));
 
-            let (host_file, metadata, root_mht, rollback_nodes) =
+            let (metadata, root_mht, rollback_nodes) =
                 match Self::open_file(&mut host_file, file_name, &key_gen, mode) {
                     Ok((_metadata, _root_mht)) => {
                         // use recovery file to discard all uncommitted nodes
-                        let (mut host_file, rollback_nodes) =
-                            Self::recover_and_reopen_file(host_file, path, &recovery_path, opts)?;
+                        let rollback_nodes =
+                            Self::recover_and_reopen_file(&mut host_file, &mut journal)?;
                         let (metadata, root_mht) =
                             Self::open_file(&mut host_file, file_name, &key_gen, mode)?;
-                        (host_file, metadata, root_mht, rollback_nodes)
+                        (metadata, root_mht, rollback_nodes)
                     }
                     Err(e) if e.equal_to_sgx_error(SgxStatus::RecoveryNeeded) => {
-                        let (mut host_file, rollback_nodes) =
-                            Self::recover_and_reopen_file(host_file, path, &recovery_path, opts)?;
+                        let rollback_nodes =
+                            Self::recover_and_reopen_file(&mut host_file, &mut journal)?;
 
                         let (metadata, root_mht) =
                             Self::open_file(&mut host_file, file_name, &key_gen, mode)?;
-                        (host_file, metadata, root_mht, rollback_nodes)
+                        (metadata, root_mht, rollback_nodes)
                     }
                     Err(e) => bail!(e),
                 };
@@ -104,12 +112,11 @@ impl FileInner {
             if opts.append && !opts.update {
                 offset = metadata.encrypted_plain.size;
             }
-            (host_file, metadata, root_mht, rollback_nodes)
+            (metadata, root_mht, rollback_nodes)
         } else {
             let metadata = Self::new_file(file_name, mode)?;
             need_writing = true;
             (
-                host_file,
                 metadata,
                 FileNode::new_root_ref(mode.into()),
                 HashMap::new(),
@@ -233,26 +240,27 @@ impl FileInner {
 
     #[inline]
     fn recover_and_reopen_file(
-        host_file: HostFile,
-        path: &Path,
-        recovery_path: &Path,
-        opts: &OpenOptions,
-    ) -> FsResult<(HostFile, HashMap<u64, Arc<RefCell<FileNode>>>)> {
-        let file_size = host_file.size();
-        drop(host_file);
+        host_file: &mut BlockFile<D>,
+        journal: &mut RecoveryJournal<D>,
+    ) -> FsResult<HashMap<u64, Arc<RefCell<FileNode>>>> {
+        // let file_size = host_file.size()?;
+        // let n_blocks = file_size / NODE_SIZE;
 
         // recovery file does not exist,all committed nodes are persisted on disk and all uncommitted nodes are discarded
-        if !Self::files_exist(recovery_path)? {
-            return Ok((HostFile::open(path, opts.readonly())?, HashMap::new()));
-        }
+        // if !Self::files_exist(recovery_path)? {
+        //     return Ok((
+        //         BlockFile::create(MemDisk::create(n_blocks)?),
+        //         HashMap::new(),
+        //     ));
+        // }
+        // TODO check recovery file size
 
-        let roll_back_nodes = host::raw_file::recovery(path, recovery_path)?;
-        let host_file = HostFile::open(path, opts.readonly())?;
-        ensure!(
-            host_file.size() == file_size,
-            FsError::SgxError(SgxStatus::Unexpected)
-        );
-        Ok((host_file, roll_back_nodes))
+        let roll_back_nodes = host::journal::recovery(host_file, journal)?;
+        // ensure!(
+        //     host_file.size() == file_size,
+        //     FsError::SgxError(SgxStatus::Unexpected)
+        // );
+        Ok(roll_back_nodes)
     }
 
     fn files_exist(path: &Path) -> FsResult<bool> {
@@ -309,5 +317,15 @@ impl FileInner {
                 }
             })
             .ok_or_else(|| eos!(EINVAL))
+    }
+
+    fn subdisk_for_data(disk: &D) -> FsResult<D> {
+        disk.subset(0..disk.nblocks() * 7 / 8)
+            .map_err(|e| FsError::Errno(e.errno()))
+    }
+
+    fn subdisk_for_journal(disk: &D) -> FsResult<D> {
+        disk.subset(disk.nblocks() * 7 / 8..disk.nblocks())
+            .map_err(|e| FsError::Errno(e.errno()))
     }
 }

@@ -25,6 +25,7 @@ use core::convert::TryFrom;
 use lending_iterator::prelude::*;
 
 /// A owned buffer whose length is a multiple of the block size.
+#[derive(Clone, Debug)]
 pub struct Buf(Pages);
 
 impl Buf {

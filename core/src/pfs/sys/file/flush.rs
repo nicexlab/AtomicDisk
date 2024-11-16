@@ -21,11 +21,11 @@ use crate::pfs::sys::host::raw_file::{remove, RecoveryFile};
 use crate::pfs::sys::host::{self, HostFs};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
-use crate::{bail, ensure, eos};
+use crate::{bail, ensure, eos, BlockSet};
 use log::error;
 use std::vec::Vec;
 
-impl FileInner {
+impl<D: BlockSet> FileInner<D> {
     pub fn flush(&mut self) -> FsResult {
         ensure!(self.status.is_ok(), FsError::SgxError(SgxStatus::BadStatus));
 

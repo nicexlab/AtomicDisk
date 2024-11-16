@@ -8,7 +8,10 @@ use crate::{
     BlockId, BlockSet, BufMut, BufRef, Errno,
 };
 
-pub struct BlockFile<D: BlockSet> {
+use super::HostFs;
+
+#[derive(Debug)]
+pub struct BlockFile<D> {
     raw_disk: D,
     size: usize,
 }
@@ -49,6 +52,20 @@ impl<D: BlockSet> BlockFile<D> {
 
     pub fn size(&self) -> FsResult<usize> {
         Ok(self.size)
+    }
+}
+
+impl<D: BlockSet> HostFs for BlockFile<D> {
+    fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> FsResult {
+        self.read(number, node.as_mut())
+    }
+
+    fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> FsResult {
+        self.write(number, node.as_ref())
+    }
+
+    fn flush(&mut self) -> FsResult {
+        self.flush()
     }
 }
 

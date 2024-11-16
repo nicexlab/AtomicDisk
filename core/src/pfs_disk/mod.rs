@@ -3,7 +3,7 @@ use crate::layers::disk::bio::{BioReq, BioType};
 use crate::os::Mutex;
 use crate::pfs::fs::SgxFile as PfsFile;
 use crate::pfs::sys::error::OsError;
-use crate::{prelude::*, BufMut};
+use crate::{prelude::*, BlockSet, BufMut};
 use crate::{BufRef, Errno};
 use std::fmt;
 use std::io::prelude::*;
@@ -16,8 +16,8 @@ mod open_options;
 /// System Library (SGX-PFS).
 ///
 /// This type of disks is considered (relatively) secure.
-pub struct PfsDisk {
-    file: Mutex<PfsFile>,
+pub struct PfsDisk<D: BlockSet> {
+    file: Mutex<PfsFile<D>>,
     path: PathBuf,
     total_blocks: usize,
     can_read: bool,
@@ -25,29 +25,29 @@ pub struct PfsDisk {
 }
 
 // Safety. PfsFile does not implement Send, but it is safe to do so.
-unsafe impl Send for PfsDisk {}
+unsafe impl<D: BlockSet> Send for PfsDisk<D> {}
 // Safety. PfsFile does not implement Sync but it is safe to do so.
-unsafe impl Sync for PfsDisk {}
+unsafe impl<D: BlockSet> Sync for PfsDisk<D> {}
 
 // The first 3KB file data of PFS are stored in the metadata node. All remaining
 // file data are stored in nodes of 4KB. We need to consider this internal
 // offset so that our block I/O are aligned with the PFS internal node boundaries.
 const PFS_INNER_OFFSET: usize = 3 * 1024;
 
-impl PfsDisk {
+impl<D: BlockSet> PfsDisk<D> {
     /// Open a disk backed by an existing PFS file on the host.
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        OpenOptions::new().read(true).write(true).open(path)
+    pub fn open<P: AsRef<Path>>(path: P, disk: D) -> Result<Self> {
+        OpenOptions::new().read(true).write(true).open(path, disk)
     }
 
     /// Open a disk by opening or creating a PFS file on the give path.
-    pub fn create<P: AsRef<Path>>(path: P, total_blocks: usize) -> Result<Self> {
+    pub fn create<P: AsRef<Path>>(path: P, total_blocks: usize, disk: D) -> Result<Self> {
         OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .total_blocks(total_blocks)
-            .open(path)
+            .open(path, disk)
     }
 
     /// Returns the PFS file on the host Linux.
@@ -184,9 +184,8 @@ impl PfsDisk {
 
 //         submission
 //     }
-// }
 
-impl Drop for PfsDisk {
+impl<D: BlockSet> Drop for PfsDisk<D> {
     fn drop(&mut self) {
         let mut file = self.file.lock();
         file.flush().unwrap();
@@ -195,7 +194,7 @@ impl Drop for PfsDisk {
     }
 }
 
-impl fmt::Debug for PfsDisk {
+impl<D: BlockSet> fmt::Debug for PfsDisk<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PfsDisk")
             .field("path", &self.path)
@@ -207,14 +206,18 @@ impl fmt::Debug for PfsDisk {
 mod test {
     use super::*;
     use crate::{
-        layers::disk::bio::{BioReqBuilder, BlockBuf},
+        layers::{
+            bio::MemDisk,
+            disk::bio::{BioReqBuilder, BlockBuf},
+        },
         Buf,
     };
     use core::ptr::NonNull;
 
     #[test]
     fn test_read_write() {
-        let disk = PfsDisk::create("test.data", 100).unwrap();
+        let disk = MemDisk::create(100).unwrap();
+        let disk = PfsDisk::create("test.data", 100, disk).unwrap();
         let data_buf = vec![1u8; BLOCK_SIZE];
         let buf = BufRef::try_from(data_buf.as_slice()).unwrap();
         disk.write(0, buf).unwrap();
@@ -227,7 +230,8 @@ mod test {
 
     #[test]
     fn multi_block_read_write() {
-        let disk = PfsDisk::create("test.disk", 10100).unwrap();
+        let disk = MemDisk::create(10100).unwrap();
+        let disk = PfsDisk::create("test.disk", 10100, disk).unwrap();
 
         let block_count = 10000;
         for i in 0..block_count {
