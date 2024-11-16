@@ -65,29 +65,13 @@ impl<D: BlockSet> FileInner<D> {
             .to_str()
             .ok_or(EINVAL)
             .unwrap();
-        Self::check_open_param(path, file_name, opts, mode)?;
-
         let key_gen = FsKeyGen::new(mode)?;
 
-        //Self::check_file_exist(opts, mode, path)?;
-
-        // TODO: pass host_file and journal outside
-        // 10MB
         let mut host_file = BlockFile::create(Self::subdisk_for_data(&disk)?);
-
         let mut journal = RecoveryJournal::create(Self::subdisk_for_journal(&disk)?);
-        let file_size = host_file.size()?;
 
-        let mut recovery_file_name = file_name.to_owned();
-        recovery_file_name.push_str("_recovery");
-        let recovery_path = path.with_file_name(recovery_file_name);
-
-        let mut need_writing = false;
         let mut offset = 0;
-        let (metadata, root_mht, rollback_nodes) = if file_size > 0 {
-            // existing file
-            ensure!(!opts.write, eos!(EACCES));
-
+        let (metadata, root_mht, rollback_nodes) = {
             let (metadata, root_mht, rollback_nodes) =
                 match Self::open_file(&mut host_file, file_name, &key_gen, mode) {
                     Ok((_metadata, _root_mht)) => {
@@ -113,9 +97,56 @@ impl<D: BlockSet> FileInner<D> {
                 offset = metadata.encrypted_plain.size;
             }
             (metadata, root_mht, rollback_nodes)
-        } else {
+        };
+
+        let mut protected_file = Self {
+            host_file,
+            metadata,
+            root_mht,
+            key_gen,
+            opts: *opts,
+            need_writing: false,
+            end_of_file: false,
+            max_cache_page: cache_size,
+            offset,
+            last_error: FsError::SgxError(SgxStatus::Success),
+            status: FileStatus::NotInitialized,
+            journal,
+            cache: LruCache::new(cache_size),
+        };
+        if !rollback_nodes.is_empty() {
+            protected_file.rollback_nodes(rollback_nodes)?;
+        }
+        protected_file.status = FileStatus::Ok;
+        Ok(protected_file)
+    }
+
+    pub fn create(
+        path: &Path,
+        disk: D,
+        opts: &OpenOptions,
+        mode: &OpenMode,
+        cache_size: Option<usize>,
+    ) -> FsResult<Self> {
+        let cache_size = Self::check_cache_size(cache_size)?;
+        let file_name = path
+            .file_name()
+            .ok_or(EINVAL)
+            .unwrap()
+            .to_str()
+            .ok_or(EINVAL)
+            .unwrap();
+        // Self::check_open_param(path, file_name, opts, mode)?;
+
+        let key_gen = FsKeyGen::new(mode)?;
+
+        //Self::check_file_exist(opts, mode, path)?;
+        // 10MB
+        let host_file = BlockFile::create(Self::subdisk_for_data(&disk)?);
+        let journal = RecoveryJournal::create(Self::subdisk_for_journal(&disk)?);
+        let need_writing = true;
+        let (metadata, root_mht, rollback_nodes) = {
             let metadata = Self::new_file(file_name, mode)?;
-            need_writing = true;
             (
                 metadata,
                 FileNode::new_root_ref(mode.into()),
@@ -132,10 +163,10 @@ impl<D: BlockSet> FileInner<D> {
             need_writing,
             end_of_file: false,
             max_cache_page: cache_size,
-            offset,
+            offset: 0,
             last_error: FsError::SgxError(SgxStatus::Success),
             status: FileStatus::NotInitialized,
-            recovery_path,
+            journal,
             cache: LruCache::new(cache_size),
         };
         if !rollback_nodes.is_empty() {
@@ -321,11 +352,11 @@ impl<D: BlockSet> FileInner<D> {
 
     fn subdisk_for_data(disk: &D) -> FsResult<D> {
         disk.subset(0..disk.nblocks() * 7 / 8)
-            .map_err(|e| FsError::Errno(e.errno()))
+            .map_err(|e| FsError::Errno(e))
     }
 
     fn subdisk_for_journal(disk: &D) -> FsResult<D> {
         disk.subset(disk.nblocks() * 7 / 8..disk.nblocks())
-            .map_err(|e| FsError::Errno(e.errno()))
+            .map_err(|e| FsError::Errno(e))
     }
 }

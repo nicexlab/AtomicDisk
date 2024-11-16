@@ -14,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License..
-
 use std::error::Error;
 use std::fmt;
 #[cfg(feature = "ufs")]
@@ -301,11 +300,11 @@ impl SgxStatus {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FsError {
     SgxError(SgxStatus),
     OsError(i32),
-    Errno(Errno),
+    Errno(crate::error::Error),
 }
 
 impl FsError {
@@ -343,7 +342,7 @@ impl FsError {
         match self {
             Self::SgxError(status) => IoError::new(ErrorKind::Other, status.as_str()),
             Self::OsError(errno) => IoError::from_raw_os_error(errno),
-            Self::Errno(errno) => IoError::new(ErrorKind::Other, errno.to_str()),
+            Self::Errno(errno) => IoError::new(ErrorKind::Other, errno.to_string()),
         }
     }
 
@@ -363,7 +362,7 @@ impl FsError {
         let e = match self {
             Self::SgxError(status) => *status as i32,
             Self::OsError(errno) => *errno,
-            Self::Errno(errno) => *errno as i32,
+            Self::Errno(errno) => errno.errno() as i32,
         };
         unsafe { *errno_location() = e }
     }
@@ -383,7 +382,7 @@ impl fmt::Display for FsError {
         match self {
             Self::SgxError(status) => write!(fmt, "sgx error {}", status.as_str()),
             Self::OsError(errno) => write!(fmt, "os error {}", errno),
-            Self::Errno(errno) => write!(fmt, "errno {}", errno.to_str()),
+            Self::Errno(errno) => write!(fmt, "errno {}", errno.to_string()),
         }
     }
 }

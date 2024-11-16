@@ -31,11 +31,6 @@ impl<D: BlockSet> FileInner<D> {
             return Ok(0);
         }
 
-        #[cfg(feature = "tfs")]
-        ensure!(buf.is_enclave_range(), esgx!(SgxStatus::InvalidParameter));
-        // ensure!(self.status.is_ok(), esgx!(SgxStatus::BadStatus));
-        ensure!(self.opts.read || self.opts.update, eos!(EACCES));
-
         if self.end_of_file {
             return Ok(0);
         }

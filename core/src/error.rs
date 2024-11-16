@@ -60,7 +60,7 @@ impl Errno {
 }
 
 /// The error with an error type and an error message used in this crate.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Error {
     errno: Errno,
     msg: Option<&'static str>,
@@ -103,7 +103,7 @@ impl From<OsError> for Error {
 
 impl From<Error> for FsError {
     fn from(error: Error) -> Self {
-        FsError::Errno(error.errno)
+        FsError::Errno(error)
     }
 }
 

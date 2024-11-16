@@ -104,6 +104,21 @@ impl<D: BlockSet> SgxFile<D> {
             .map(|f| SgxFile { file: Box::new(f) })
     }
 
+    pub fn create<P: AsRef<Path>>(
+        disk: D,
+        path: P,
+        opts: &OpenOptions,
+        encrypt_mode: &EncryptMode,
+        cache_size: Option<usize>,
+    ) -> io::Result<SgxFile<D>> {
+        ProtectedFile::create(disk, path, &opts.0, &encrypt_mode.into(), cache_size)
+            .map_err(|e| {
+                e.set_errno();
+                e.to_io_error()
+            })
+            .map(|f| SgxFile { file: Box::new(f) })
+    }
+
     #[inline]
     pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         self.file.read(buf).map_err(|e| {

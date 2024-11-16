@@ -426,6 +426,33 @@ impl OpenOptions {
         let inner = fs_imp::SgxFile::open(disk, path, &self.0, &encrypt_mode.0, cache_size)?;
         Ok(SgxFile { inner })
     }
+    pub fn create_with_key<P: AsRef<Path>, D: BlockSet>(
+        &self,
+        disk: D,
+        path: P,
+        key: AeadKey,
+        cache_size: Option<usize>,
+    ) -> io::Result<SgxFile<D>> {
+        self.create(disk, path, EncryptMode::user_key(key), cache_size)
+    }
+    pub fn create_integrity_only<P: AsRef<Path>, D: BlockSet>(
+        &self,
+        disk: D,
+        path: P,
+        cache_size: Option<usize>,
+    ) -> io::Result<SgxFile<D>> {
+        self.create(disk, path, EncryptMode::integrity_only(), cache_size)
+    }
+    pub fn create<P: AsRef<Path>, D: BlockSet>(
+        &self,
+        disk: D,
+        path: P,
+        encrypt_mode: EncryptMode,
+        cache_size: Option<usize>,
+    ) -> io::Result<SgxFile<D>> {
+        let inner = fs_imp::SgxFile::create(disk, path, &self.0, &encrypt_mode.0, cache_size)?;
+        Ok(SgxFile { inner })
+    }
 }
 
 impl Default for OpenOptions {

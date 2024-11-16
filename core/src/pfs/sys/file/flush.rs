@@ -96,13 +96,11 @@ impl<D: BlockSet> FileInner<D> {
 
         if flush {
             self.host_file.flush()?;
-            let mut recovery_file = RecoveryFile::open(&self.recovery_path)?;
-            // append a commit record in the recovery file, all records before this commit record are committed
-            recovery_file.commit()?;
+            self.journal.commit()?;
             // flush the recovery file to disk
-            recovery_file.flush()?;
+            self.journal.flush()?;
             // all nodes are persisted on disk, the recovery file is no longer needed
-            remove(&self.recovery_path)?;
+            self.journal.reset()?;
         }
         Ok(())
     }
@@ -201,7 +199,7 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     fn write_recovery_file_node(&mut self) -> FsResult {
-        let mut file = RecoveryFile::open(&self.recovery_path)?;
+        let journal = &mut self.journal;
         let mut mht_nodes = vec![];
         let mut data_nodes = vec![];
         for node in self.cache.iter().filter_map(|node| {
@@ -223,25 +221,25 @@ impl<D: BlockSet> FileInner<D> {
         mht_nodes.sort_by(|a, b| b.logic_number.cmp(&a.logic_number));
 
         for node in mht_nodes.iter() {
-            node.write_recovery_file(&mut file)?;
+            node.write_recovery_file(journal)?;
         }
 
         for node in data_nodes.iter() {
-            node.write_recovery_file(&mut file)?;
+            node.write_recovery_file(journal)?;
         }
 
         let root_mht = self.root_mht.borrow();
         if root_mht.need_writing && !root_mht.new_node {
-            root_mht.write_recovery_file(&mut file)?;
+            root_mht.write_recovery_file(journal)?;
         }
 
-        self.metadata.write_recovery_file(&mut file)
+        self.metadata.write_recovery_file(journal)
     }
 
     #[inline]
     fn write_recovery_file(&mut self) -> FsResult {
         self.write_recovery_file_node().map_err(|error| {
-            let _ = host::raw_file::remove(&self.recovery_path);
+            let _ = self.journal.reset();
             error
         })
     }

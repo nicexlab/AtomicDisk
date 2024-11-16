@@ -1,16 +1,16 @@
 use hashbrown::HashMap;
 use log::debug;
 
-use super::{block_file::BlockFile, raw_file::FileStream, JournalFlag};
+use super::{block_file::BlockFile, raw_file::FileStream, HostFs, JournalFlag};
 use crate::{
-    bail, ensure,
+    bail, ensure, eos,
     layers::disk,
     pfs::sys::{
-        error::{FsError, FsResult, EINVAL},
+        error::{FsError, FsResult, EINVAL, ENOTSUP},
         host::{RecoveryHandler, RECOVERY_NODE_SIZE},
         node::{EncryptedData, FileNode, NodeType, NODE_SIZE},
     },
-    BlockSet, Buf, Errno, BLOCK_SIZE,
+    BlockSet, Buf, Errno, Error, BLOCK_SIZE,
 };
 use core::{cell::RefCell, ffi::CStr};
 use std::{path::Path, sync::Arc};
@@ -20,6 +20,7 @@ const DEFAULT_BUF_SIZE: usize = 4 * 1024 * 1024;
 // the first block is used to store the journal meta, currently only the length
 const INNER_OFFSET: usize = 1 * BLOCK_SIZE;
 
+#[derive(Debug)]
 pub struct RawJournal<D> {
     buf: Vec<u8>,
     flush_pos: usize,
@@ -63,14 +64,28 @@ impl<D: BlockSet> RawJournal<D> {
     }
 
     pub fn size(&self) -> FsResult<usize> {
-        let mut buf = Buf::alloc(1).map_err(|e| FsError::Errno(e.errno()))?;
+        let mut buf = Buf::alloc(1).map_err(|e| FsError::Errno(e))?;
         self.disk.read(0, buf.as_mut())?;
         let size = usize::from_le_bytes(buf.as_slice()[0..8].try_into().unwrap());
-        ensure!(size >= INNER_OFFSET, FsError::Errno(Errno::InvalidArgs));
+        ensure!(
+            size >= INNER_OFFSET,
+            FsError::Errno(Error::with_msg(
+                Errno::InvalidArgs,
+                "journal size is less than inner offset"
+            ))
+        );
         Ok(size - INNER_OFFSET)
+    }
+
+    pub fn reset(&mut self) -> FsResult {
+        self.buf.clear();
+        self.flush_pos = INNER_OFFSET;
+        self.disk.write_slice(0, &self.flush_pos.to_le_bytes())?;
+        Ok(())
     }
 }
 
+#[derive(Debug)]
 pub struct RecoveryJournal<D> {
     raw: RawJournal<D>,
 }
@@ -85,7 +100,10 @@ impl<D: BlockSet> RecoveryJournal<D> {
     pub fn append(&mut self, data: &[u8]) -> FsResult {
         ensure!(
             data.len() == RECOVERY_NODE_SIZE,
-            FsError::Errno(crate::Errno::InvalidArgs)
+            FsError::Errno(Error::with_msg(
+                Errno::InvalidArgs,
+                "recovery node size is not equal to recovery node size",
+            ))
         );
         let flag = JournalFlag::Node;
         self.raw.append(&[flag as u8])?;
@@ -105,8 +123,26 @@ impl<D: BlockSet> RecoveryJournal<D> {
         self.raw.size()
     }
 
-    pub fn read(&self, offset: usize, buf: &mut [u8]) -> FsResult {
+    pub fn read_inner(&self, offset: usize, buf: &mut [u8]) -> FsResult {
         self.raw.read(offset, buf)
+    }
+
+    pub fn reset(&mut self) -> FsResult {
+        self.raw.reset()
+    }
+}
+
+impl<D: BlockSet> HostFs for RecoveryJournal<D> {
+    fn flush(&mut self) -> FsResult {
+        self.flush()
+    }
+
+    fn read(&mut self, _number: u64, _node: &mut dyn AsMut<[u8]>) -> FsResult {
+        bail!(eos!(ENOTSUP))
+    }
+
+    fn write(&mut self, _number: u64, node: &dyn AsRef<[u8]>) -> FsResult {
+        self.append(node.as_ref())
     }
 }
 
@@ -121,7 +157,7 @@ pub fn recovery<D: BlockSet>(
     let mut flag_buf = vec![0u8; 1];
 
     while offset < log_size {
-        recovery.read(offset, flag_buf.as_mut_slice())?;
+        recovery.read_inner(offset, flag_buf.as_mut_slice())?;
         let flag: JournalFlag = flag_buf[0].into();
         offset += 1;
 
@@ -147,7 +183,7 @@ pub fn recovery<D: BlockSet>(
         if left_size < 1 {
             break;
         }
-        recovery.read(offset, flag_buf.as_mut_slice())?;
+        recovery.read_inner(offset, flag_buf.as_mut_slice())?;
         let flag: JournalFlag = flag_buf[0].into();
         offset += 1;
         left_size -= 1;
@@ -157,7 +193,7 @@ pub fn recovery<D: BlockSet>(
                 if left_size < RECOVERY_NODE_SIZE {
                     break;
                 }
-                recovery.read(offset, data_buf.as_mut_slice())?;
+                recovery.read_inner(offset, data_buf.as_mut_slice())?;
 
                 let mut number = [0u8; 8];
                 number.copy_from_slice(&data_buf[0..8]);

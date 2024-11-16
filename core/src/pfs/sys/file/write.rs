@@ -65,8 +65,9 @@ impl<D: BlockSet> FileInner<D> {
             let file_node = match self.get_data_node() {
                 Ok(node) => node,
                 Err(error) => {
-                    self.set_last_error(error);
-                    break;
+                    log::error!("get_data_node error: {:?}", error);
+                    self.set_last_error(error.clone());
+                    return Err(error);
                 }
             };
 

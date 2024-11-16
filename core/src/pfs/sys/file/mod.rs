@@ -42,6 +42,7 @@ use std::sync::Mutex;
 use super::error::SgxStatus;
 use super::error::EINVAL;
 use super::host::block_file::BlockFile;
+use super::host::journal::RecoveryJournal;
 use super::host::HostFile;
 
 mod close;
@@ -70,7 +71,7 @@ pub struct FileInner<D> {
     offset: usize,
     last_error: FsError,
     status: FileStatus,
-    recovery_path: PathBuf,
+    journal: RecoveryJournal<D>,
     cache: LruCache<FileNode>,
 }
 
@@ -83,6 +84,18 @@ impl<D: BlockSet> ProtectedFile<D> {
         cache_size: Option<usize>,
     ) -> FsResult<Self> {
         let file = FileInner::open(path.as_ref(), disk, opts, mode, cache_size)?;
+        Ok(Self {
+            file: Mutex::new(file),
+        })
+    }
+    pub fn create<P: AsRef<Path>>(
+        disk: D,
+        path: P,
+        opts: &OpenOptions,
+        mode: &OpenMode,
+        cache_size: Option<usize>,
+    ) -> FsResult<Self> {
+        let file = FileInner::create(path.as_ref(), disk, opts, mode, cache_size)?;
         Ok(Self {
             file: Mutex::new(file),
         })
@@ -524,6 +537,7 @@ pub enum CloseMode {
 mod test {
     use std::sync::Once;
 
+    use log::info;
     use open::SE_PAGE_SIZE;
 
     use crate::pfs::sys::{host::HostFs, metadata::EncryptFlags, node::NodeType};
@@ -544,11 +558,11 @@ mod test {
 
     #[test]
     fn simple_read_write() {
+        init_logger();
         let file_path = Path::new("test.data");
-        let _ = std::fs::File::create(file_path).unwrap();
         let opts = OpenOptions::new().read(false).write(true).append(false);
         let disk = MemDisk::create(1024).unwrap();
-        let file = ProtectedFile::open(
+        let file = ProtectedFile::create(
             disk,
             file_path,
             &opts,
@@ -560,6 +574,7 @@ mod test {
         file.flush().unwrap();
 
         let mut read_buffer = vec![0u8; 5];
+        file.seek(SeekFrom::Start(0)).unwrap();
         file.read(&mut read_buffer).unwrap();
         assert_eq!(read_buffer, b"hello");
     }
@@ -594,7 +609,7 @@ mod test {
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(false).append(true);
         let file =
-            ProtectedFile::open(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+            ProtectedFile::create(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -604,6 +619,7 @@ mod test {
         }
         file.flush().unwrap();
 
+        file.seek(SeekFrom::Start(0)).unwrap();
         let mut read_buffer = vec![0u8; block_size];
         for _ in 0..block_number {
             file.read(&mut read_buffer).unwrap();
@@ -615,12 +631,11 @@ mod test {
     fn seek_and_read() {
         init_logger();
         let file_path = Path::new("test.data");
-        let _ = std::fs::File::create(file_path).unwrap();
         let disk = MemDisk::create(1024).unwrap();
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(true);
         let file =
-            ProtectedFile::open(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+            ProtectedFile::create(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -644,15 +659,37 @@ mod test {
     }
 
     #[test]
+    fn skip_metadata_node() {
+        init_logger();
+        let offset = 3072;
+        let block_size = 4 * 1024;
+        let block_number = 100;
+
+        let file_path = Path::new("test.data");
+        let disk = MemDisk::create(block_number).unwrap();
+        let key = AeadKey::default();
+        let opts = OpenOptions::new().read(false).write(true);
+        let file =
+            ProtectedFile::create(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+
+        let write_buffer = vec![1u8; block_size];
+        for i in 0..block_number {
+            info!("write at {}", i * block_size + offset);
+            file.write_at(&write_buffer, (i * block_size + offset) as u64)
+                .unwrap();
+        }
+        file.flush().unwrap();
+    }
+
+    #[test]
     fn ignore_mht_node_when_recovery() {
         init_logger();
         let source_path = Path::new("test.data");
-        let _ = std::fs::File::create(source_path).unwrap();
         let opts = OpenOptions::new().read(false).write(true);
         let key = AeadKey::default();
         let disk = MemDisk::create(1024).unwrap();
         let file =
-            ProtectedFile::open(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+            ProtectedFile::create(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -692,12 +729,17 @@ mod test {
     #[test]
     fn rollback_nodes() {
         let source_path = Path::new("test.data");
-        let _ = std::fs::File::create(source_path).unwrap();
         let opts = OpenOptions::new().read(false).write(true);
         let key = AeadKey::default();
         let disk = MemDisk::create(1024).unwrap();
-        let file =
-            ProtectedFile::open(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+        let file = ProtectedFile::create(
+            disk.clone(),
+            source_path,
+            &opts,
+            &OpenMode::UserKey(key),
+            None,
+        )
+        .unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -714,6 +756,11 @@ mod test {
             file.write_at(&write_buffer, offset).unwrap();
         }
         file.flush().unwrap();
+
+        drop(file);
+
+        let file =
+            ProtectedFile::open(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let mut rollback_nodes = HashMap::new();
         let mut node1 = FileNode::new(NodeType::Data, 13, 15, EncryptFlags::UserKey);

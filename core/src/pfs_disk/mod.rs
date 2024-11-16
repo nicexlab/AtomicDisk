@@ -225,7 +225,6 @@ mod test {
         let mut read_buf = Buf::alloc(1).unwrap();
         disk.read(0, read_buf.as_mut()).unwrap();
         assert_eq!(read_buf.as_slice(), &[1u8; BLOCK_SIZE]);
-        std::fs::remove_file("test.data").unwrap();
     }
 
     #[test]

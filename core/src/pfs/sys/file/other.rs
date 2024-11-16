@@ -50,7 +50,7 @@ impl<D: BlockSet> FileInner<D> {
     pub fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
         ensure!(self.status.is_ok(), FsError::SgxError(SgxStatus::BadStatus));
 
-        let file_size = self.metadata.encrypted_plain.size as u64;
+        let file_size = self.host_file.size()? as u64;
         let new_offset = match pos {
             SeekFrom::Start(off) => {
                 if off <= file_size {
@@ -203,7 +203,7 @@ impl<D: BlockSet> FileInner<D> {
         if self.last_error.is_success() && !self.status.is_ok() {
             FsError::SgxError(SgxStatus::BadStatus)
         } else {
-            self.last_error
+            self.last_error.clone()
         }
     }
 

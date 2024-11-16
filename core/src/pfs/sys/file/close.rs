@@ -55,8 +55,6 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     fn remove_recovery_file(&mut self) {
-        if !self.recovery_path.as_path().as_os_str().is_empty() {
-            let _ = host::raw_file::remove(&self.recovery_path);
-        }
+        self.journal.reset().unwrap();
     }
 }

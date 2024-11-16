@@ -5,7 +5,7 @@ use crate::{
         error::{FsError, FsResult, OsResult},
         node::NODE_SIZE,
     },
-    BlockId, BlockSet, BufMut, BufRef, Errno,
+    BlockId, BlockSet, BufMut, BufRef, Errno, Error,
 };
 
 use super::HostFs;
@@ -24,34 +24,40 @@ impl<D: BlockSet> BlockFile<D> {
     pub fn read(&mut self, number: u64, buf: &mut [u8]) -> FsResult {
         ensure!(
             buf.len() == NODE_SIZE,
-            FsError::Errno(Errno::NotBlockSizeAligned)
+            FsError::Errno(Error::with_msg(
+                Errno::NotBlockSizeAligned,
+                "read buffer size not aligned to block size",
+            ))
         );
-        let buf_mut = BufMut::try_from(buf).map_err(|e| FsError::Errno(e.errno()))?;
+        let buf_mut = BufMut::try_from(buf).map_err(|e| FsError::Errno(e))?;
         self.raw_disk
             .read(number as BlockId, buf_mut)
-            .map_err(|e| FsError::Errno(e.errno()))
+            .map_err(|e| FsError::Errno(e))
     }
 
     pub fn write(&mut self, number: u64, buf: &[u8]) -> FsResult {
         ensure!(
             buf.len() == NODE_SIZE,
-            FsError::Errno(Errno::NotBlockSizeAligned)
+            FsError::Errno(Error::with_msg(
+                Errno::NotBlockSizeAligned,
+                "write buffer size not aligned to block size",
+            ))
         );
         let block_end = (number as usize + 1) * NODE_SIZE;
         self.size = block_end.max(self.size);
 
-        let buf_ref = BufRef::try_from(buf).map_err(|e| FsError::Errno(e.errno()))?;
+        let buf_ref = BufRef::try_from(buf).map_err(|e| FsError::Errno(e))?;
         self.raw_disk
             .write(number as BlockId, buf_ref)
-            .map_err(|e| FsError::Errno(e.errno()))
+            .map_err(|e| FsError::Errno(e))
     }
 
     pub fn flush(&mut self) -> FsResult {
-        self.raw_disk.flush().map_err(|e| FsError::Errno(e.errno()))
+        self.raw_disk.flush().map_err(|e| FsError::Errno(e))
     }
 
     pub fn size(&self) -> FsResult<usize> {
-        Ok(self.size)
+        Ok(self.raw_disk.nblocks() * NODE_SIZE)
     }
 }
 

@@ -77,8 +77,12 @@ impl OpenOptions {
         if !self.read && !self.write {
             return_errno_with_msg!(Errno::IoFailed, "the disk must be readable or writable")
         }
-        if (self.create || self.create_new) && self.total_blocks.is_none() {
-            return_errno_with_msg!(Errno::IoFailed, "the disk size must be given")
+
+        if self.create || self.create_new {
+            if self.total_blocks.is_none() {
+                return_errno_with_msg!(Errno::IoFailed, "the disk size must be given")
+            }
+            return self.create_pfs_disk(path, disk);
         }
 
         // Open or create the PFS file
@@ -148,6 +152,22 @@ impl OpenOptions {
         };
         Ok(pfs_disk)
     }
+
+    pub fn create_pfs_disk<P: AsRef<Path>, D: BlockSet>(
+        &self,
+        path: P,
+        disk: D,
+    ) -> Result<PfsDisk<D>> {
+        let file = create_pfs_file(path.as_ref(), disk)?;
+        let pfs_disk = PfsDisk {
+            file: Mutex::new(file),
+            path: path.as_ref().to_path_buf(),
+            total_blocks: self.total_blocks.unwrap(),
+            can_read: self.read,
+            can_write: self.write,
+        };
+        Ok(pfs_disk)
+    }
 }
 
 /// Open an existing PFS file with read and write permissions.
@@ -166,7 +186,7 @@ fn create_pfs_file<P: AsRef<Path>, D: BlockSet>(path: P, disk: D) -> Result<PfsF
     let ret = PfsOpenOptions::new()
         .write(true)
         .update(true)
-        .open_with_key(disk, path.as_ref(), AeadKey::default())
+        .create_with_key(disk, path.as_ref(), AeadKey::default(), None)
         .map_err(|e| e.raw_os_error().unwrap().into());
     ret
 }
