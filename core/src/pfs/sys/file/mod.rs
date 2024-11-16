@@ -666,7 +666,7 @@ mod test {
         let block_number = 100;
 
         let file_path = Path::new("test.data");
-        let disk = MemDisk::create(block_number).unwrap();
+        let disk = MemDisk::create(block_number * 2).unwrap();
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(true);
         let file =
@@ -674,7 +674,6 @@ mod test {
 
         let write_buffer = vec![1u8; block_size];
         for i in 0..block_number {
-            info!("write at {}", i * block_size + offset);
             file.write_at(&write_buffer, (i * block_size + offset) as u64)
                 .unwrap();
         }
