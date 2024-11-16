@@ -15,19 +15,17 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use crate::os::SeekFrom;
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus, EINVAL, ENAMETOOLONG};
 use crate::pfs::sys::file::{FileInner, FileStatus};
 use crate::pfs::sys::host;
 use crate::pfs::sys::metadata::FILENAME_MAX_LEN;
 use crate::{bail, ensure, eos, AeadMac, BlockSet};
 
-use std::io::SeekFrom;
-use std::path::Path;
-
 impl<D: BlockSet> FileInner<D> {
     #[inline]
-    pub fn remove(path: &Path) -> FsResult {
-        host::raw_file::remove(path)
+    pub fn remove(_path: &str) -> FsResult {
+        unreachable!()
     }
 
     #[inline]

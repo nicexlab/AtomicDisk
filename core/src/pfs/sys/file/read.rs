@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use crate::os::SeekFrom;
 use crate::pfs::sys::error::{FsResult, EACCES};
 use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::NODE_SIZE;
 use crate::{bail, ensure, eos, BlockSet};
-use std::io::SeekFrom;
 
 #[cfg(feature = "tfs")]
 use sgx_trts::trts::EnclaveRange;

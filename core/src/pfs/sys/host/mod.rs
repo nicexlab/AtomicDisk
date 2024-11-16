@@ -3,28 +3,22 @@ use super::metadata::{EncryptFlags, MetadataInfo, MD_USER_DATA_SIZE};
 use super::node::{
     EncryptedData, FileNode, NodeType, ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE,
 };
+use crate::os::Arc;
 use crate::pfs::sys::error::ENOTSUP;
 use crate::{bail, eos};
 use crate::{ensure, AeadKey};
 use core::cell::RefCell;
 use hashbrown::HashMap;
 use libc::c_void;
-use raw_file::RawFile;
-use std::ffi::{CStr, CString};
-use std::fs::{self, File, OpenOptions};
-use std::io::{Error, ErrorKind, SeekFrom};
-use std::mem::{self, ManuallyDrop};
-use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::path::Path;
-use std::sync::Arc;
-
 pub mod block_file;
 pub mod journal;
+
+#[cfg(feature = "occlum")]
 pub mod raw_file;
+
 const MILISECONDS_SLEEP_FOPEN: u32 = 10;
 const MAX_FOPEN_RETRIES: usize = 10;
-pub const RECOVERY_NODE_SIZE: usize = mem::size_of::<u64>() + NODE_SIZE;
+pub const RECOVERY_NODE_SIZE: usize = core::mem::size_of::<u64>() + NODE_SIZE;
 
 enum JournalFlag {
     Node,
@@ -54,40 +48,6 @@ pub trait HostFs {
     fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> FsResult;
     fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> FsResult;
     fn flush(&mut self) -> FsResult;
-}
-
-#[derive(Debug)]
-pub struct HostFile {
-    raw: RawFile,
-}
-
-impl HostFile {
-    pub fn open(name: &Path, readonly: bool) -> FsResult<HostFile> {
-        let raw = RawFile::open(name, readonly).map_err(|e| FsError::OsError(e))?;
-        Ok(HostFile { raw })
-    }
-
-    pub fn size(&self) -> usize {
-        self.raw.size().unwrap()
-    }
-}
-
-impl HostFs for HostFile {
-    fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> FsResult {
-        self.raw
-            .read(number, node.as_mut())
-            .map_err(|err| FsError::OsError(err))
-    }
-
-    fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> FsResult {
-        self.raw
-            .write(number, node.as_ref())
-            .map_err(|err| FsError::OsError(err))
-    }
-
-    fn flush(&mut self) -> FsResult {
-        self.raw.flush().map_err(|err| FsError::OsError(err))
-    }
 }
 
 pub struct RecoveryHandler {

@@ -15,10 +15,8 @@
 // specific language governing permissions and limitations
 // under the License..
 
-use hashbrown::HashMap;
-use log::info;
-
 use crate::layers::bio::MemDisk;
+use crate::os::Arc;
 use crate::pfs::sys::cache::LruCache;
 use crate::pfs::sys::error::{
     FsError, FsResult, SgxStatus, EACCES, EINVAL, ENAMETOOLONG, ENOENT, ENOTSUP,
@@ -26,8 +24,7 @@ use crate::pfs::sys::error::{
 use crate::pfs::sys::file::{FileInner, FileStatus, OpenMode, OpenOptions};
 use crate::pfs::sys::host::block_file::BlockFile;
 use crate::pfs::sys::host::journal::RecoveryJournal;
-use crate::pfs::sys::host::raw_file::RecoveryFile;
-use crate::pfs::sys::host::{self, HostFile, HostFs, RecoveryHandler, RECOVERY_NODE_SIZE};
+use crate::pfs::sys::host::{self, HostFs, RecoveryHandler, RECOVERY_NODE_SIZE};
 use crate::pfs::sys::keys::{FsKeyGen, RestoreKey};
 use crate::pfs::sys::metadata::MetadataInfo;
 use crate::pfs::sys::metadata::{
@@ -35,11 +32,9 @@ use crate::pfs::sys::metadata::{
 };
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType, NODE_SIZE};
 use crate::{bail, ensure, eos, AeadKey, BlockSet};
-
 use core::cell::RefCell;
-use std::borrow::ToOwned;
-use std::path::Path;
-use std::sync::Arc;
+use hashbrown::HashMap;
+use log::info;
 
 pub const SE_PAGE_SIZE: usize = 0x1000;
 macro_rules! is_page_aligned {
@@ -52,20 +47,14 @@ pub const DEFAULT_CACHE_SIZE: usize = 48 * SE_PAGE_SIZE;
 
 impl<D: BlockSet> FileInner<D> {
     pub fn open(
-        path: &Path,
+        path: &str,
         disk: D,
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
     ) -> FsResult<Self> {
         let cache_size = Self::check_cache_size(cache_size)?;
-        let file_name = path
-            .file_name()
-            .ok_or(EINVAL)
-            .unwrap()
-            .to_str()
-            .ok_or(EINVAL)
-            .unwrap();
+        let file_name = path;
         let key_gen = FsKeyGen::new(mode)?;
 
         let mut host_file = BlockFile::create(Self::subdisk_for_data(&disk)?);
@@ -123,20 +112,14 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     pub fn create(
-        path: &Path,
+        path: &str,
         disk: D,
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
     ) -> FsResult<Self> {
         let cache_size = Self::check_cache_size(cache_size)?;
-        let file_name = path
-            .file_name()
-            .ok_or(EINVAL)
-            .unwrap()
-            .to_str()
-            .ok_or(EINVAL)
-            .unwrap();
+        let file_name = path;
         // Self::check_open_param(path, file_name, opts, mode)?;
 
         let key_gen = FsKeyGen::new(mode)?;
@@ -295,30 +278,30 @@ impl<D: BlockSet> FileInner<D> {
         Ok(roll_back_nodes)
     }
 
-    fn files_exist(path: &Path) -> FsResult<bool> {
-        host::raw_file::try_exists(path)
+    fn files_exist(_path: &str) -> FsResult<bool> {
+        unreachable!()
+        // host::raw_file::try_exists(path)
     }
 
-    fn check_file_exist(opts: &OpenOptions, mode: &OpenMode, path: &Path) -> FsResult {
-        let is_exist = host::raw_file::try_exists(path)?;
+    fn check_file_exist(_opts: &OpenOptions, _mode: &OpenMode, _path: &str) -> FsResult {
+        unreachable!()
+        // let is_exist = host::raw_file::try_exists(path)?;
 
-        if opts.read || mode.import_key().is_some() {
-            ensure!(is_exist, eos!(ENOENT));
-        }
-        if opts.write && is_exist {
-            // try to delete existing file
-            host::raw_file::remove(path)?;
-            // re-check
-            let is_exist = host::raw_file::try_exists(path)?;
-            ensure!(!is_exist, eos!(EACCES));
-        }
-
-        Ok(())
+        // if opts.read || mode.import_key().is_some() {
+        //     ensure!(is_exist, eos!(ENOENT));
+        // }
+        // if opts.write && is_exist {
+        //     // try to delete existing file
+        //     host::raw_file::remove(path)?;
+        //     // re-check
+        //     let is_exist = host::raw_file::try_exists(path)?;
+        //     ensure!(!is_exist, eos!(EACCES));
+        // }
     }
 
     #[inline]
-    fn check_open_param(path: &Path, name: &str, opts: &OpenOptions, mode: &OpenMode) -> FsResult {
-        let path_len = path.to_str().ok_or(EINVAL).unwrap().len();
+    fn check_open_param(path: &str, name: &str, opts: &OpenOptions, mode: &OpenMode) -> FsResult {
+        let path_len = path.len();
         ensure!(
             (path_len > 0 && path_len < FULLNAME_MAX_LEN - 1),
             eos!(EINVAL)

@@ -5,7 +5,6 @@ use crate::pfs::fs::SgxFile as PfsFile;
 use crate::pfs::sys::error::OsError;
 use crate::{prelude::*, BlockSet, BufMut};
 use crate::{BufRef, Errno};
-use std::fmt;
 use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
@@ -18,7 +17,7 @@ mod open_options;
 /// This type of disks is considered (relatively) secure.
 pub struct PfsDisk<D: BlockSet> {
     file: Mutex<PfsFile<D>>,
-    path: PathBuf,
+    path: String,
     total_blocks: usize,
     can_read: bool,
     can_write: bool,
@@ -36,12 +35,12 @@ const PFS_INNER_OFFSET: usize = 3 * 1024;
 
 impl<D: BlockSet> PfsDisk<D> {
     /// Open a disk backed by an existing PFS file on the host.
-    pub fn open<P: AsRef<Path>>(path: P, disk: D) -> Result<Self> {
+    pub fn open(path: &str, disk: D) -> Result<Self> {
         OpenOptions::new().read(true).write(true).open(path, disk)
     }
 
     /// Open a disk by opening or creating a PFS file on the give path.
-    pub fn create<P: AsRef<Path>>(path: P, total_blocks: usize, disk: D) -> Result<Self> {
+    pub fn create(path: &str, total_blocks: usize, disk: D) -> Result<Self> {
         OpenOptions::new()
             .read(true)
             .write(true)
@@ -51,7 +50,7 @@ impl<D: BlockSet> PfsDisk<D> {
     }
 
     /// Returns the PFS file on the host Linux.
-    pub fn path(&self) -> &Path {
+    pub fn path(&self) -> &str {
         &self.path
     }
 

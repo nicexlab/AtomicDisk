@@ -15,14 +15,13 @@
 // specific language governing permissions and limitations
 // under the License..
 
-use log::{debug, info};
-
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
 use crate::pfs::sys::file::{FileInner, FileStatus};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType};
 use crate::pfs::sys::node::{ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE};
 use crate::{bail, ensure, eos, BlockSet};
+use log::{debug, info};
 
 impl<D: BlockSet> FileInner<D> {
     pub fn get_data_node(&mut self) -> FsResult<FileNodeRef> {

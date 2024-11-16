@@ -73,7 +73,7 @@ impl OpenOptions {
     }
 
     /// Opens a PFS disk at `path` with the options specified by `self`.
-    pub fn open<P: AsRef<Path>, D: BlockSet>(&self, path: P, disk: D) -> Result<PfsDisk<D>> {
+    pub fn open<D: BlockSet>(&self, path: &str, disk: D) -> Result<PfsDisk<D>> {
         if !self.read && !self.write {
             return_errno_with_msg!(Errno::IoFailed, "the disk must be readable or writable")
         }
@@ -145,7 +145,7 @@ impl OpenOptions {
 
         let pfs_disk = PfsDisk {
             file: Mutex::new(pfs_file),
-            path: path.as_ref().to_path_buf(),
+            path: path.to_string(),
             total_blocks,
             can_read: self.read,
             can_write: self.write,
@@ -153,18 +153,14 @@ impl OpenOptions {
         Ok(pfs_disk)
     }
 
-    pub fn create_pfs_disk<P: AsRef<Path>, D: BlockSet>(
-        &self,
-        path: P,
-        disk: D,
-    ) -> Result<PfsDisk<D>> {
-        let mut file = create_pfs_file(path.as_ref(), disk)?;
+    pub fn create_pfs_disk<D: BlockSet>(&self, path: &str, disk: D) -> Result<PfsDisk<D>> {
+        let mut file = create_pfs_file(path, disk)?;
         let new_len = PFS_INNER_OFFSET
             + PfsDisk::<D>::total_data_blocks(self.total_blocks.unwrap()) * BLOCK_SIZE;
         write_zeros(&mut file, 0, new_len);
         let pfs_disk = PfsDisk {
             file: Mutex::new(file),
-            path: path.as_ref().to_path_buf(),
+            path: path.to_string(),
             total_blocks: self.total_blocks.unwrap(),
             can_read: self.read,
             can_write: self.write,
@@ -174,22 +170,22 @@ impl OpenOptions {
 }
 
 /// Open an existing PFS file with read and write permissions.
-fn open_pfs_file<P: AsRef<Path>, D: BlockSet>(path: P, disk: D) -> Result<PfsFile<D>> {
+fn open_pfs_file<D: BlockSet>(path: &str, disk: D) -> Result<PfsFile<D>> {
     let ret = PfsOpenOptions::new()
         .read(true)
         .update(true)
-        .open_with_key(disk, path.as_ref(), AeadKey::default())
+        .open_with_key(disk, path, AeadKey::default())
         .map_err(|e| e.raw_os_error().unwrap().into());
     ret
 }
 
 /// Create a PFS file with read and write permissions. The length of the
 /// opened file is zero.
-fn create_pfs_file<P: AsRef<Path>, D: BlockSet>(path: P, disk: D) -> Result<PfsFile<D>> {
+fn create_pfs_file<D: BlockSet>(path: &str, disk: D) -> Result<PfsFile<D>> {
     let ret = PfsOpenOptions::new()
         .write(true)
         .update(true)
-        .create_with_key(disk, path.as_ref(), AeadKey::default(), None)
+        .create_with_key(disk, path, AeadKey::default(), None)
         .map_err(|e| e.raw_os_error().unwrap().into());
     ret
 }

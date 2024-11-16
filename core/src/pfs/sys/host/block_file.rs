@@ -1,5 +1,4 @@
-use log::info;
-
+use super::HostFs;
 use crate::{
     bail, ensure,
     layers::{bio::BlockLog, log::raw_log::RawLog},
@@ -9,8 +8,7 @@ use crate::{
     },
     BlockId, BlockSet, BufMut, BufRef, Errno, Error,
 };
-
-use super::HostFs;
+use log::info;
 
 #[derive(Debug)]
 pub struct BlockFile<D> {

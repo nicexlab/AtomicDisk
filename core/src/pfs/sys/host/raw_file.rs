@@ -21,6 +21,40 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::{HostFs, JournalFlag, RecoveryHandler, MAX_FOPEN_RETRIES, MILISECONDS_SLEEP_FOPEN};
+
+#[derive(Debug)]
+pub struct HostFile {
+    raw: RawFile,
+}
+
+impl HostFile {
+    pub fn open(name: &Path, readonly: bool) -> FsResult<HostFile> {
+        let raw = RawFile::open(name, readonly).map_err(|e| FsError::OsError(e))?;
+        Ok(HostFile { raw })
+    }
+
+    pub fn size(&self) -> usize {
+        self.raw.size().unwrap()
+    }
+}
+
+impl HostFs for HostFile {
+    fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> FsResult {
+        self.raw
+            .read(number, node.as_mut())
+            .map_err(|err| FsError::OsError(err))
+    }
+
+    fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> FsResult {
+        self.raw
+            .write(number, node.as_ref())
+            .map_err(|err| FsError::OsError(err))
+    }
+
+    fn flush(&mut self) -> FsResult {
+        self.raw.flush().map_err(|err| FsError::OsError(err))
+    }
+}
 #[derive(Debug)]
 pub struct RawFile {
     stream: FileStream,
@@ -436,9 +470,9 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Arc<Ref
 }
 
 mod tests {
-    use super::{recovery, RawRecoveryFile, RecoveryFile};
+    use super::{recovery, HostFile, RawRecoveryFile, RecoveryFile};
     use crate::pfs::sys::{
-        host::{HostFile, HostFs, RECOVERY_NODE_SIZE},
+        host::{HostFs, RECOVERY_NODE_SIZE},
         node::NODE_SIZE,
     };
     use std::path::Path;

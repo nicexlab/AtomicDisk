@@ -130,95 +130,85 @@ unsafe impl<D: BlockSet> Sync for SgxFile<D> {}
 
 impl<D: BlockSet> SgxFile<D> {
     //#[cfg(feature = "tfs")]
-    pub fn open<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
-        OpenOptions::new().read(true).open(disk, path.as_ref())
+    pub fn open(disk: D, path: &str) -> io::Result<SgxFile<D>> {
+        OpenOptions::new().read(true).open(disk, path)
     }
 
     //#[cfg(feature = "tfs")]
-    pub fn create<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
-        OpenOptions::new().write(true).open(disk, path.as_ref())
+    pub fn create(disk: D, path: &str) -> io::Result<SgxFile<D>> {
+        OpenOptions::new().write(true).open(disk, path)
     }
 
     //#[cfg(feature = "tfs")]
-    pub fn append<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
-        OpenOptions::new().append(true).open(disk, path.as_ref())
+    pub fn append(disk: D, path: &str) -> io::Result<SgxFile<D>> {
+        OpenOptions::new().append(true).open(disk, path)
     }
 
-    pub fn open_with_key<P: AsRef<Path>>(disk: D, path: P, key: AeadKey) -> io::Result<SgxFile<D>> {
-        OpenOptions::new()
-            .read(true)
-            .open_with_key(disk, path.as_ref(), key)
+    pub fn open_with_key(disk: D, path: &str, key: AeadKey) -> io::Result<SgxFile<D>> {
+        OpenOptions::new().read(true).open_with_key(disk, path, key)
     }
 
-    pub fn create_with_key<P: AsRef<Path>>(
-        disk: D,
-        path: P,
-        key: AeadKey,
-    ) -> io::Result<SgxFile<D>> {
+    pub fn create_with_key(disk: D, path: &str, key: AeadKey) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
-            .open_with_key(disk, path.as_ref(), key)
+            .open_with_key(disk, path, key)
     }
 
-    pub fn append_with_key<P: AsRef<Path>>(
-        disk: D,
-        path: P,
-        key: AeadKey,
-    ) -> io::Result<SgxFile<D>> {
+    pub fn append_with_key(disk: D, path: &str, key: AeadKey) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
-            .open_with_key(disk, path.as_ref(), key)
+            .open_with_key(disk, path, key)
     }
 
-    pub fn open_integrity_only<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
+    pub fn open_integrity_only(disk: D, path: &str) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .read(true)
-            .open_integrity_only(disk, path.as_ref())
+            .open_integrity_only(disk, path)
     }
 
-    pub fn create_integrity_only<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
+    pub fn create_integrity_only(disk: D, path: &str) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
-            .open_integrity_only(disk, path.as_ref())
+            .open_integrity_only(disk, path)
     }
 
-    pub fn append_integrity_only<P: AsRef<Path>>(disk: D, path: P) -> io::Result<SgxFile<D>> {
+    pub fn append_integrity_only(disk: D, path: &str) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
-            .open_integrity_only(disk, path.as_ref())
+            .open_integrity_only(disk, path)
     }
 
-    pub fn open_with<P: AsRef<Path>>(
+    pub fn open_with(
         disk: D,
-        path: P,
+        path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
     ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .read(true)
-            .open_with(disk, path.as_ref(), encrypt_mode, cache_size)
+            .open_with(disk, path, encrypt_mode, cache_size)
     }
 
-    pub fn create_with<P: AsRef<Path>>(
+    pub fn create_with(
         disk: D,
-        path: P,
+        path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
     ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
-            .open_with(disk, path.as_ref(), encrypt_mode, cache_size)
+            .open_with(disk, path, encrypt_mode, cache_size)
     }
 
-    pub fn append_with<P: AsRef<Path>>(
+    pub fn append_with(
         disk: D,
-        path: P,
+        path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
     ) -> io::Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
-            .open_with(disk, path.as_ref(), encrypt_mode, cache_size)
+            .open_with(disk, path, encrypt_mode, cache_size)
     }
 
     pub fn options() -> OpenOptions {
@@ -395,58 +385,54 @@ impl OpenOptions {
 
     /// Opens a file at `path` with the options specified by `self`.
 
-    pub fn open<P: AsRef<Path>, D: BlockSet>(&self, disk: D, path: P) -> io::Result<SgxFile<D>> {
+    pub fn open<D: BlockSet>(&self, disk: D, path: &str) -> io::Result<SgxFile<D>> {
         self.open_with(disk, path, EncryptMode::auto_key(None), None)
     }
 
-    pub fn open_with_key<P: AsRef<Path>, D: BlockSet>(
+    pub fn open_with_key<D: BlockSet>(
         &self,
         disk: D,
-        path: P,
+        path: &str,
         key: AeadKey,
     ) -> io::Result<SgxFile<D>> {
         self.open_with(disk, path, EncryptMode::user_key(key), None)
     }
 
-    pub fn open_integrity_only<P: AsRef<Path>, D: BlockSet>(
-        &self,
-        disk: D,
-        path: P,
-    ) -> io::Result<SgxFile<D>> {
+    pub fn open_integrity_only<D: BlockSet>(&self, disk: D, path: &str) -> io::Result<SgxFile<D>> {
         self.open_with(disk, path, EncryptMode::integrity_only(), None)
     }
 
-    pub fn open_with<P: AsRef<Path>, D: BlockSet>(
+    pub fn open_with<D: BlockSet>(
         &self,
         disk: D,
-        path: P,
+        path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
     ) -> io::Result<SgxFile<D>> {
         let inner = fs_imp::SgxFile::open(disk, path, &self.0, &encrypt_mode.0, cache_size)?;
         Ok(SgxFile { inner })
     }
-    pub fn create_with_key<P: AsRef<Path>, D: BlockSet>(
+    pub fn create_with_key<D: BlockSet>(
         &self,
         disk: D,
-        path: P,
+        path: &str,
         key: AeadKey,
         cache_size: Option<usize>,
     ) -> io::Result<SgxFile<D>> {
         self.create(disk, path, EncryptMode::user_key(key), cache_size)
     }
-    pub fn create_integrity_only<P: AsRef<Path>, D: BlockSet>(
+    pub fn create_integrity_only<D: BlockSet>(
         &self,
         disk: D,
-        path: P,
+        path: &str,
         cache_size: Option<usize>,
     ) -> io::Result<SgxFile<D>> {
         self.create(disk, path, EncryptMode::integrity_only(), cache_size)
     }
-    pub fn create<P: AsRef<Path>, D: BlockSet>(
+    pub fn create<D: BlockSet>(
         &self,
         disk: D,
-        path: P,
+        path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
     ) -> io::Result<SgxFile<D>> {

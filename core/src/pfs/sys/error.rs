@@ -14,10 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License..
-use std::error::Error;
-use std::fmt;
-#[cfg(feature = "ufs")]
-use std::io::ErrorKind;
+
+use core::fmt;
 use std::io::{Error as IoError, ErrorKind};
 pub type OsError = i32;
 use crate::{impl_enum, Errno};
@@ -390,17 +388,6 @@ impl fmt::Display for FsError {
 impl From<SgxStatus> for FsError {
     fn from(errno: SgxStatus) -> FsError {
         FsError::from_sgx_error(errno)
-    }
-}
-
-impl Error for FsError {
-    #[cfg(feature = "tfs")]
-    #[allow(deprecated)]
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::SgxError(status) => Some(status),
-            Self::OsError(..) => None,
-        }
     }
 }
 

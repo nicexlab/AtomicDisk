@@ -89,9 +89,9 @@ pub struct SgxFile<D> {
 }
 
 impl<D: BlockSet> SgxFile<D> {
-    pub fn open<P: AsRef<Path>>(
+    pub fn open(
         disk: D,
-        path: P,
+        path: &str,
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,
@@ -104,9 +104,9 @@ impl<D: BlockSet> SgxFile<D> {
             .map(|f| SgxFile { file: Box::new(f) })
     }
 
-    pub fn create<P: AsRef<Path>>(
+    pub fn create(
         disk: D,
-        path: P,
+        path: &str,
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,

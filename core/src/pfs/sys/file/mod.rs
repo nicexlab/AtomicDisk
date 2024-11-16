@@ -14,13 +14,12 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License..
-
-use hashbrown::HashMap;
-
 use crate::bail;
 use crate::ensure;
 use crate::eos;
 use crate::layers::bio::MemDisk;
+use crate::os::SeekFrom;
+use crate::os::{Arc, Mutex};
 use crate::pfs::sgx::KeyPolicy;
 use crate::pfs::sys::cache::LruCache;
 use crate::pfs::sys::error::{FsError, FsResult};
@@ -31,19 +30,13 @@ use crate::pfs::sys::EncryptMode;
 use crate::AeadKey;
 use crate::AeadMac;
 use crate::BlockSet;
-
 use core::cell::RefCell;
-use std::io::SeekFrom;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
+use hashbrown::HashMap;
 
 use super::error::SgxStatus;
 use super::error::EINVAL;
 use super::host::block_file::BlockFile;
 use super::host::journal::RecoveryJournal;
-use super::host::HostFile;
 
 mod close;
 mod flush;
@@ -76,9 +69,9 @@ pub struct FileInner<D> {
 }
 
 impl<D: BlockSet> ProtectedFile<D> {
-    pub fn open<P: AsRef<Path>>(
+    pub fn open(
         disk: D,
-        path: P,
+        path: &str,
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
@@ -88,9 +81,9 @@ impl<D: BlockSet> ProtectedFile<D> {
             file: Mutex::new(file),
         })
     }
-    pub fn create<P: AsRef<Path>>(
+    pub fn create(
         disk: D,
-        path: P,
+        path: &str,
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
@@ -102,12 +95,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn write(&self, buf: &[u8]) -> FsResult<usize> {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.write(buf).map_err(|error| {
             file.set_last_error(error);
             error
@@ -115,12 +103,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn write_at(&self, buf: &[u8], offset: u64) -> FsResult<usize> {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.write_at(buf, offset).map_err(|error| {
             file.set_last_error(error);
             error
@@ -128,12 +111,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn read(&self, buf: &mut [u8]) -> FsResult<usize> {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.read(buf).map_err(|error| {
             file.set_last_error(error);
             error
@@ -141,12 +119,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.read_at(buf, offset).map_err(|error| {
             file.set_last_error(error);
             error
@@ -154,12 +127,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn tell(&self) -> FsResult<u64> {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.tell().map_err(|error| {
             file.set_last_error(error);
             error
@@ -167,12 +135,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.seek(pos).map_err(|error| {
             file.set_last_error(error);
             error
@@ -180,12 +143,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn set_len(&self, size: u64) -> FsResult {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.set_len(size).map_err(|error| {
             file.set_last_error(error);
             error
@@ -193,12 +151,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn flush(&self) -> FsResult {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.flush().map_err(|error| {
             file.set_last_error(error);
             error
@@ -206,36 +159,23 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn file_size(&self) -> FsResult<u64> {
-        let file = self
-            .file
-            .lock()
-            .unwrap_or_else(|posion_error| posion_error.into_inner());
+        let file = self.file.lock();
         file.file_size()
     }
 
     pub fn get_eof(&self) -> bool {
-        let file = self
-            .file
-            .lock()
-            .unwrap_or_else(|posion_error| posion_error.into_inner());
+        let file = self.file.lock();
         file.get_eof()
     }
 
     pub fn get_error(&self) -> FsError {
-        let file = self
-            .file
-            .lock()
-            .unwrap_or_else(|posion_error| posion_error.into_inner());
+        let file = self.file.lock();
         file.get_last_error()
     }
 
     pub fn clear_cache(&self) -> FsResult {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
+
         file.clear_cache().map_err(|error| {
             file.set_last_error(error);
             error
@@ -243,12 +183,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn clear_error(&self) -> FsResult {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.clear_error().map_err(|error| {
             file.set_last_error(error);
             error
@@ -256,12 +191,7 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn get_metadata_mac(&self) -> FsResult<AeadMac> {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.get_metadata_mac().map_err(|error| {
             file.set_last_error(error);
             error
@@ -269,22 +199,12 @@ impl<D: BlockSet> ProtectedFile<D> {
     }
 
     pub fn close(&self) -> FsResult {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.close(CloseMode::Normal).map(|_| ())
     }
 
     pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> FsResult {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.rename(old_name.as_ref(), new_name.as_ref())
             .map_err(|error| {
                 file.set_last_error(error);
@@ -292,18 +212,13 @@ impl<D: BlockSet> ProtectedFile<D> {
             })
     }
 
-    pub fn remove<P: AsRef<Path>>(path: P) -> FsResult {
-        FileInner::<D>::remove(path.as_ref())
+    pub fn remove(path: &str) -> FsResult {
+        FileInner::<D>::remove(path)
     }
 
     #[cfg(test)]
     pub fn rollback_nodes(&self, rollback_nodes: HashMap<u64, Arc<RefCell<FileNode>>>) -> FsResult {
-        let mut file = self.file.lock().map_err(|posion_error| {
-            let mut file = posion_error.into_inner();
-            file.set_last_error(SgxStatus::Unexpected);
-            file.set_file_status(FileStatus::MemoryCorrupted);
-            SgxStatus::Unexpected
-        })?;
+        let mut file = self.file.lock();
         file.rollback_nodes(rollback_nodes)
     }
 
@@ -535,12 +450,12 @@ pub enum CloseMode {
 }
 
 mod test {
-    use std::sync::Once;
+    use std::{path::Path, sync::Once};
 
     use log::info;
     use open::SE_PAGE_SIZE;
 
-    use crate::pfs::sys::{host::HostFs, metadata::EncryptFlags, node::NodeType};
+    use crate::pfs::sys::{metadata::EncryptFlags, node::NodeType};
 
     use super::*;
 
@@ -559,12 +474,12 @@ mod test {
     #[test]
     fn simple_read_write() {
         init_logger();
-        let file_path = Path::new("test.data");
+        let file_path = String::from("test.data");
         let opts = OpenOptions::new().read(false).write(true).append(false);
         let disk = MemDisk::create(1024).unwrap();
         let file = ProtectedFile::create(
             disk,
-            file_path,
+            &file_path,
             &opts,
             &OpenMode::UserKey(AeadKey::default()),
             None,
@@ -582,34 +497,49 @@ mod test {
     #[test]
     fn sync_test() {
         init_logger();
-        let file_path = Path::new("test.data");
+        let file_path = String::from("test.data");
         let opts = OpenOptions::new().read(false).write(true);
-        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
+        let disk = MemDisk::create(1024).unwrap();
+        let file = ProtectedFile::create(
+            disk.clone(),
+            &file_path,
+            &opts,
+            &OpenMode::UserKey(AeadKey::default()),
+            None,
+        )
+        .unwrap();
         let data = vec![1u8; 4096];
-        file.write(0, &data).unwrap();
+        file.write_at(&data, 0).unwrap();
         file.flush().unwrap();
 
         let data = vec![1u8; 4096];
-        file.write(0, &data).unwrap();
+        file.write_at(&data, 0).unwrap();
         file.flush().unwrap();
 
         drop(file);
-        let mut file = HostFile::open(file_path, opts.readonly()).unwrap();
+        let file = ProtectedFile::open(
+            disk,
+            &file_path,
+            &opts,
+            &OpenMode::UserKey(AeadKey::default()),
+            None,
+        )
+        .unwrap();
         let mut read_buffer = vec![0u8; 4096];
-        file.read(0, &mut read_buffer).unwrap();
+        file.read(&mut read_buffer).unwrap();
         assert_eq!(read_buffer, vec![1u8; 4096]);
     }
 
     #[test]
     fn multiple_block_write() {
         init_logger();
-        let file_path = Path::new("test.data");
-        let _ = std::fs::File::create(file_path).unwrap();
+        let file_path = String::from("test.data");
+        let _ = std::fs::File::create(&file_path).unwrap();
         let disk = MemDisk::create(1024).unwrap();
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(false).append(true);
         let file =
-            ProtectedFile::create(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+            ProtectedFile::create(disk, &file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -630,12 +560,12 @@ mod test {
     #[test]
     fn seek_and_read() {
         init_logger();
-        let file_path = Path::new("test.data");
+        let file_path = String::from("test.data");
         let disk = MemDisk::create(1024).unwrap();
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(true);
         let file =
-            ProtectedFile::create(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+            ProtectedFile::create(disk, &file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -665,12 +595,12 @@ mod test {
         let block_size = 4 * 1024;
         let block_number = 100;
 
-        let file_path = Path::new("test.data");
+        let file_path = String::from("test.data");
         let disk = MemDisk::create(block_number * 2).unwrap();
         let key = AeadKey::default();
         let opts = OpenOptions::new().read(false).write(true);
         let file =
-            ProtectedFile::create(disk, file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+            ProtectedFile::create(disk, &file_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let write_buffer = vec![1u8; block_size];
         for i in 0..block_number {
@@ -683,12 +613,12 @@ mod test {
     #[test]
     fn ignore_mht_node_when_recovery() {
         init_logger();
-        let source_path = Path::new("test.data");
+        let source_path = String::from("test.data");
         let opts = OpenOptions::new().read(false).write(true);
         let key = AeadKey::default();
         let disk = MemDisk::create(1024).unwrap();
-        let file =
-            ProtectedFile::create(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+        let file = ProtectedFile::create(disk, &source_path, &opts, &OpenMode::UserKey(key), None)
+            .unwrap();
 
         let block_size = 4 * 1024;
         let block_number = 100;
@@ -727,13 +657,13 @@ mod test {
 
     #[test]
     fn rollback_nodes() {
-        let source_path = Path::new("test.data");
+        let source_path = String::from("test.data");
         let opts = OpenOptions::new().read(false).write(true);
         let key = AeadKey::default();
         let disk = MemDisk::create(1024).unwrap();
         let file = ProtectedFile::create(
             disk.clone(),
-            source_path,
+            &source_path,
             &opts,
             &OpenMode::UserKey(key),
             None,
@@ -759,7 +689,7 @@ mod test {
         drop(file);
 
         let file =
-            ProtectedFile::open(disk, source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
+            ProtectedFile::open(disk, &source_path, &opts, &OpenMode::UserKey(key), None).unwrap();
 
         let mut rollback_nodes = HashMap::new();
         let mut node1 = FileNode::new(NodeType::Data, 13, 15, EncryptFlags::UserKey);

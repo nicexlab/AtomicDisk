@@ -16,8 +16,8 @@ mod linux;
 pub use self::linux::{
     spawn, Aead, AeadIv, AeadKey, AeadMac, Arc, BTreeMap, Box, Condvar, CurrentThread, CvarMutex,
     HashMap, HashSet, JoinHandle, Mutex, MutexGuard, Pages, Rng, RwLock, RwLockReadGuard,
-    RwLockWriteGuard, Skcipher, SkcipherIv, SkcipherKey, String, Tid, ToString, Vec, Weak,
-    PAGE_SIZE,
+    RwLockWriteGuard, SeekFrom, Skcipher, SkcipherIv, SkcipherKey, String, Tid, ToString, Vec,
+    Weak, PAGE_SIZE,
 };
 
 #[cfg(feature = "occlum")]
@@ -36,6 +36,6 @@ mod std;
 pub use self::std::{
     spawn, Aead, AeadIv, AeadKey, AeadMac, Arc, BTreeMap, Box, Condvar, CurrentThread, CvarMutex,
     HashMap, HashSet, JoinHandle, Mutex, MutexGuard, Pages, Rng, RwLock, RwLockReadGuard,
-    RwLockWriteGuard, Skcipher, SkcipherIv, SkcipherKey, String, Tid, ToString, Vec, Weak,
-    PAGE_SIZE,
+    RwLockWriteGuard, SeekFrom, Skcipher, SkcipherIv, SkcipherKey, String, Tid, ToString, Vec,
+    Weak, PAGE_SIZE,
 };

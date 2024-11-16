@@ -1,7 +1,5 @@
-use hashbrown::HashMap;
-use log::{debug, info};
-
-use super::{block_file::BlockFile, raw_file::FileStream, HostFs, JournalFlag};
+use super::{block_file::BlockFile, HostFs, JournalFlag};
+use crate::os::Arc;
 use crate::{
     bail, ensure, eos,
     layers::disk,
@@ -13,7 +11,8 @@ use crate::{
     BlockSet, Buf, Errno, Error, BLOCK_SIZE,
 };
 use core::{cell::RefCell, ffi::CStr};
-use std::{path::Path, sync::Arc};
+use hashbrown::HashMap;
+use log::{debug, info};
 
 // 4MB
 const DEFAULT_BUF_SIZE: usize = 4 * 1024 * 1024;

@@ -15,15 +15,14 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use crate::os::Vec;
 use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
 use crate::pfs::sys::file::{FileInner, FileStatus};
-use crate::pfs::sys::host::raw_file::{remove, RecoveryFile};
 use crate::pfs::sys::host::{self, HostFs};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
 use crate::{bail, ensure, eos, BlockSet};
 use log::error;
-use std::vec::Vec;
 
 impl<D: BlockSet> FileInner<D> {
     pub fn flush(&mut self) -> FsResult {
