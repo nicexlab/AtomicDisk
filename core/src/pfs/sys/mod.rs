@@ -23,15 +23,14 @@ mod node;
 // specific language governing permissions and limitations
 // under the License..
 
+use error::FsResult;
+
+use super::sgx::KeyPolicy;
+use crate::os::{Box, SeekFrom};
 use crate::pfs::sys::error::FsError;
 use crate::pfs::sys::file::{self as file_imp, ProtectedFile};
 use crate::{AeadKey, AeadMac, BlockSet};
-use std::boxed::Box;
-use std::io::{self, SeekFrom};
-use std::mem::ManuallyDrop;
-use std::path::Path;
-
-use super::sgx::KeyPolicy;
+use core::mem::ManuallyDrop;
 
 #[derive(Clone, Debug)]
 pub struct OpenOptions(file_imp::OpenOptions);
@@ -67,14 +66,6 @@ impl OpenOptions {
     pub fn binary(&mut self, binary: bool) {
         self.0.binary = binary;
     }
-
-    #[allow(dead_code)]
-    pub fn check(&self) -> io::Result<()> {
-        self.0.check().map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
-    }
 }
 
 impl Default for OpenOptions {
@@ -95,12 +86,8 @@ impl<D: BlockSet> SgxFile<D> {
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,
-    ) -> io::Result<SgxFile<D>> {
+    ) -> FsResult<SgxFile<D>> {
         ProtectedFile::open(disk, path, &opts.0, &encrypt_mode.into(), cache_size)
-            .map_err(|e| {
-                e.set_errno();
-                e.to_io_error()
-            })
             .map(|f| SgxFile { file: Box::new(f) })
     }
 
@@ -110,85 +97,54 @@ impl<D: BlockSet> SgxFile<D> {
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,
-    ) -> io::Result<SgxFile<D>> {
+    ) -> FsResult<SgxFile<D>> {
         ProtectedFile::create(disk, path, &opts.0, &encrypt_mode.into(), cache_size)
-            .map_err(|e| {
-                e.set_errno();
-                e.to_io_error()
-            })
             .map(|f| SgxFile { file: Box::new(f) })
     }
 
     #[inline]
-    pub fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.file.read(buf).map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn read(&self, buf: &mut [u8]) -> FsResult<usize> {
+        self.file.read(buf)
     }
 
     #[inline]
-    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
-        self.file.read_at(buf, offset).map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
+        self.file.read_at(buf, offset)
     }
 
     #[inline]
-    pub fn write(&self, buf: &[u8]) -> io::Result<usize> {
-        self.file.write(buf).map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn write(&self, buf: &[u8]) -> FsResult<usize> {
+        self.file.write(buf)
     }
 
     #[inline]
-    pub fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize> {
-        self.file.write_at(buf, offset).map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> FsResult<usize> {
+        self.file.write_at(buf, offset)
     }
 
     #[inline]
-    pub fn tell(&self) -> io::Result<u64> {
-        self.file.tell().map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn tell(&self) -> FsResult<u64> {
+        self.file.tell()
     }
 
     #[inline]
-    pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
-        self.file.seek(pos).map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
+        self.file.seek(pos)
     }
 
     #[inline]
-    pub fn set_len(&self, size: u64) -> io::Result<()> {
-        self.file.set_len(size).map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn set_len(&self, size: u64) -> FsResult<()> {
+        self.file.set_len(size)
     }
 
     #[inline]
-    pub fn flush(&self) -> io::Result<()> {
-        self.file.flush().map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn flush(&self) -> FsResult<()> {
+        self.file.flush()
     }
 
     #[inline]
-    pub fn file_size(&self) -> io::Result<u64> {
-        self.file.file_size().map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn file_size(&self) -> FsResult<u64> {
+        self.file.file_size()
     }
 
     #[inline]
@@ -203,35 +159,23 @@ impl<D: BlockSet> SgxFile<D> {
     }
 
     #[inline]
-    pub fn clear_cache(&self) -> io::Result<()> {
-        self.file.clear_cache().map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn clear_cache(&self) -> FsResult<()> {
+        self.file.clear_cache()
     }
 
     #[inline]
-    pub fn clear_error(&self) -> io::Result<()> {
-        self.file.clear_error().map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn clear_error(&self) -> FsResult<()> {
+        self.file.clear_error()
     }
 
     #[inline]
-    pub fn get_mac(&self) -> io::Result<AeadMac> {
-        self.file.get_metadata_mac().map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn get_mac(&self) -> FsResult<AeadMac> {
+        self.file.get_metadata_mac()
     }
 
     #[inline]
-    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> io::Result<()> {
-        self.file.rename(old_name, new_name).map_err(|e| {
-            e.set_errno();
-            e.to_io_error()
-        })
+    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> FsResult<()> {
+        self.file.rename(old_name, new_name)
     }
 }
 

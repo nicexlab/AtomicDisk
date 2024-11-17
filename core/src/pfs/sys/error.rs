@@ -16,11 +16,10 @@
 // under the License..
 
 use core::fmt;
-use std::io::{Error as IoError, ErrorKind};
 pub type OsError = i32;
 use crate::{impl_enum, Errno};
-pub type OsResult<T = ()> = std::result::Result<T, OsError>;
-pub type FsResult<T = ()> = std::result::Result<T, FsError>;
+pub type OsResult<T = ()> = core::result::Result<T, OsError>;
+pub type FsResult<T = ()> = core::result::Result<T, FsError>;
 pub const ENOENT: i32 = 2;
 pub const EACCES: i32 = 13;
 pub const EINVAL: i32 = 22;
@@ -335,22 +334,6 @@ impl FsError {
             Self::Errno(_) => false,
         }
     }
-
-    pub fn to_io_error(self) -> IoError {
-        match self {
-            Self::SgxError(status) => IoError::new(ErrorKind::Other, status.as_str()),
-            Self::OsError(errno) => IoError::from_raw_os_error(errno),
-            Self::Errno(errno) => IoError::new(ErrorKind::Other, errno.to_string()),
-        }
-    }
-
-    // #[cfg(feature = "ufs")]
-    // pub fn to_io_error(self) -> IoError {
-    //     match self {
-    //         Self::SgxError(status) => IoError::new(ErrorKind::Other, status.as_str()),
-    //         Self::OsError(errno) => IoError::from_raw_os_error(errno),
-    //     }
-    // }
 
     pub fn set_errno(&self) {
         extern "C" {

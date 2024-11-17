@@ -15,13 +15,10 @@
 // specific language governing permissions and limitations
 // under the License..
 
-#![allow(dead_code)]
-
+use crate::os::{Arc, HashMap};
+use core::cell::RefCell;
+use core::ptr::NonNull;
 use list::{LinkedList, Node};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ptr::NonNull;
-use std::sync::Arc;
 
 mod list;
 

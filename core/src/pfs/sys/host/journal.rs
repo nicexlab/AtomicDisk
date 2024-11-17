@@ -1,5 +1,6 @@
 use super::{block_file::BlockFile, HostFs, JournalFlag};
 use crate::os::Arc;
+use crate::os::HashMap;
 use crate::{
     bail, ensure, eos,
     layers::disk,
@@ -11,7 +12,6 @@ use crate::{
     BlockSet, Buf, Errno, Error, BLOCK_SIZE,
 };
 use core::{cell::RefCell, ffi::CStr};
-use hashbrown::HashMap;
 use log::{debug, info};
 
 // 4MB

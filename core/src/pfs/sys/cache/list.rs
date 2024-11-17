@@ -14,15 +14,12 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License..
-
-use std::boxed::Box;
-use std::cmp::Ordering;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
-use std::mem;
-use std::ptr::NonNull;
-
+use core::cmp::Ordering;
+use core::fmt;
+use core::hash::{Hash, Hasher};
+use core::marker::PhantomData;
+use core::mem;
+use core::ptr::NonNull;
 /// A doubly-linked list with owned nodes.
 pub struct LinkedList<T> {
     head: Option<NonNull<Node<T>>>,

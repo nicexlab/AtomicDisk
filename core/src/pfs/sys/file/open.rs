@@ -17,6 +17,7 @@
 
 use crate::layers::bio::MemDisk;
 use crate::os::Arc;
+use crate::os::HashMap;
 use crate::pfs::sys::cache::LruCache;
 use crate::pfs::sys::error::{
     FsError, FsResult, SgxStatus, EACCES, EINVAL, ENAMETOOLONG, ENOENT, ENOTSUP,
@@ -33,7 +34,6 @@ use crate::pfs::sys::metadata::{
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType, NODE_SIZE};
 use crate::{bail, ensure, eos, AeadKey, BlockSet};
 use core::cell::RefCell;
-use hashbrown::HashMap;
 use log::info;
 
 pub const SE_PAGE_SIZE: usize = 0x1000;

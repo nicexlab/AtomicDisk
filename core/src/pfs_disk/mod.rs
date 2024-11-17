@@ -1,13 +1,11 @@
 pub use self::open_options::OpenOptions;
 use crate::layers::disk::bio::{BioReq, BioType};
 use crate::os::Mutex;
+use crate::os::SeekFrom;
 use crate::pfs::fs::SgxFile as PfsFile;
 use crate::pfs::sys::error::OsError;
 use crate::{prelude::*, BlockSet, BufMut};
 use crate::{BufRef, Errno};
-use std::io::prelude::*;
-use std::io::SeekFrom;
-use std::path::{Path, PathBuf};
 
 mod open_options;
 
@@ -131,7 +129,7 @@ impl<D: BlockSet> PfsDisk<D> {
         }
 
         let mut file = self.file.lock();
-        let ret = file.flush().map_err(|e| e.raw_os_error().unwrap().into());
+        let ret = file.flush().map_err(|e| e.to_errno());
         // TODO: sync
         //file.sync_data()?;
         drop(file);

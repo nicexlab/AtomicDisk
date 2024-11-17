@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License..
 
-use pod::Pod;
-
 use crate::layers::crypto::Iv;
 use crate::pfs::sgx::{Attributes, CpuSvn, KeyId, KeyPolicy};
 use crate::pfs::sys::error::FsResult;
@@ -29,9 +27,9 @@ use crate::{
     bail, cfg_if, eos, impl_asmut_slice, impl_asref_slice, impl_enum, impl_struct_ContiguousMemory,
     impl_struct_default, Aead, AeadKey, AeadMac,
 };
-
-use std::ffi::CStr;
-use std::mem;
+use core::ffi::CStr;
+use core::mem;
+use pod::Pod;
 
 use super::error::SgxStatus;
 

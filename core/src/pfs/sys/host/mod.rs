@@ -4,12 +4,11 @@ use super::node::{
     EncryptedData, FileNode, NodeType, ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE,
 };
 use crate::os::Arc;
+use crate::os::HashMap;
 use crate::pfs::sys::error::ENOTSUP;
 use crate::{bail, eos};
 use crate::{ensure, AeadKey};
 use core::cell::RefCell;
-use hashbrown::HashMap;
-use libc::c_void;
 pub mod block_file;
 pub mod journal;
 

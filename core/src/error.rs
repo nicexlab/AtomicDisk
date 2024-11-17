@@ -1,6 +1,5 @@
-use core::fmt;
-
 use crate::pfs::sys::error::{FsError, OsError, ENOENT};
+use core::fmt;
 
 /// The error types used in this crate.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

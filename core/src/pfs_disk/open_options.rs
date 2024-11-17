@@ -1,10 +1,6 @@
-use std::io::Seek as _;
-use std::io::SeekFrom;
-use std::io::Write as _;
-use std::path::Path;
-
 use super::{PfsDisk, PFS_INNER_OFFSET};
 use crate::os::Mutex;
+use crate::os::SeekFrom;
 use crate::pfs::fs::OpenOptions as PfsOpenOptions;
 use crate::pfs::fs::SgxFile as PfsFile;
 use crate::AeadKey;
@@ -175,7 +171,7 @@ fn open_pfs_file<D: BlockSet>(path: &str, disk: D) -> Result<PfsFile<D>> {
         .read(true)
         .update(true)
         .open_with_key(disk, path, AeadKey::default())
-        .map_err(|e| e.raw_os_error().unwrap().into());
+        .map_err(|e| e.to_errno());
     ret
 }
 
@@ -186,7 +182,7 @@ fn create_pfs_file<D: BlockSet>(path: &str, disk: D) -> Result<PfsFile<D>> {
         .write(true)
         .update(true)
         .create_with_key(disk, path, AeadKey::default(), None)
-        .map_err(|e| e.raw_os_error().unwrap().into());
+        .map_err(|e| e.to_errno());
     ret
 }
 

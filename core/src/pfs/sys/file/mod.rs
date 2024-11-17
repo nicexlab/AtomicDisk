@@ -18,6 +18,7 @@ use crate::bail;
 use crate::ensure;
 use crate::eos;
 use crate::layers::bio::MemDisk;
+use crate::os::HashMap;
 use crate::os::SeekFrom;
 use crate::os::{Arc, Mutex};
 use crate::pfs::sgx::KeyPolicy;
@@ -31,7 +32,6 @@ use crate::AeadKey;
 use crate::AeadMac;
 use crate::BlockSet;
 use core::cell::RefCell;
-use hashbrown::HashMap;
 
 use super::error::SgxStatus;
 use super::error::EINVAL;
