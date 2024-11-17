@@ -4,7 +4,7 @@ use crate::os::Mutex;
 use crate::os::SeekFrom;
 use crate::pfs::fs::SgxFile as PfsFile;
 use crate::pfs::sys::error::OsError;
-use crate::{prelude::*, BlockSet, BufMut};
+use crate::{prelude::*, AeadKey, BlockSet, BufMut};
 use crate::{BufRef, Errno};
 
 mod open_options;
@@ -33,18 +33,24 @@ const PFS_INNER_OFFSET: usize = 3 * 1024;
 
 impl<D: BlockSet> PfsDisk<D> {
     /// Open a disk backed by an existing PFS file on the host.
-    pub fn open(path: &str, disk: D) -> Result<Self> {
-        OpenOptions::new().read(true).write(true).open(path, disk)
+    pub fn open(disk: D, root_key: AeadKey, path: Option<&str>) -> Result<Self> {
+        let path = path.unwrap_or("pfsdisk");
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path, disk, root_key)
     }
 
     /// Open a disk by opening or creating a PFS file on the give path.
-    pub fn create(path: &str, total_blocks: usize, disk: D) -> Result<Self> {
+    pub fn create(disk: D, root_key: AeadKey, path: Option<&str>) -> Result<Self> {
+        let path = path.unwrap_or("pfsdisk");
+        let total_blocks = PfsDisk::<D>::total_data_blocks(disk.nblocks());
         OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .total_blocks(total_blocks)
-            .open(path, disk)
+            .open(path, disk, root_key)
     }
 
     /// Returns the PFS file on the host Linux.
@@ -75,6 +81,11 @@ impl<D: BlockSet> PfsDisk<D> {
         file.seek(SeekFrom::Start(offset as u64)).unwrap();
         file.write(buf.as_slice()).unwrap();
         Ok(())
+    }
+
+    pub fn sync(&self) -> Result<()> {
+        let mut file = self.file.lock();
+        file.flush().map_err(|e| e.to_errno())
     }
 
     fn do_read(&self, req: &Arc<BioReq>) -> Result<()> {
@@ -227,8 +238,9 @@ mod test {
 
     #[test]
     fn test_read_write() {
+        let root_key = AeadKey::default();
         let disk = MemDisk::create(100).unwrap();
-        let disk = PfsDisk::create("test.data", 100, disk).unwrap();
+        let disk = PfsDisk::create(disk, root_key, None).unwrap();
         let data_buf = vec![1u8; BLOCK_SIZE];
         let buf = BufRef::try_from(data_buf.as_slice()).unwrap();
         disk.write(0, buf).unwrap();
@@ -241,8 +253,9 @@ mod test {
     #[test]
     fn multi_block_read_write() {
         init_logger();
+        let root_key = AeadKey::default();
         let disk = MemDisk::create(11000).unwrap();
-        let disk = PfsDisk::create("test.disk", 11000, disk).unwrap();
+        let disk = PfsDisk::create(disk, root_key, None).unwrap();
 
         let block_count = 8000;
         for i in 0..block_count {

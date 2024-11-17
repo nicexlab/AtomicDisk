@@ -69,7 +69,7 @@ impl OpenOptions {
     }
 
     /// Opens a PFS disk at `path` with the options specified by `self`.
-    pub fn open<D: BlockSet>(&self, path: &str, disk: D) -> Result<PfsDisk<D>> {
+    pub fn open<D: BlockSet>(&self, path: &str, disk: D, root_key: AeadKey) -> Result<PfsDisk<D>> {
         if !self.read && !self.write {
             return_errno_with_msg!(Errno::IoFailed, "the disk must be readable or writable")
         }
@@ -78,7 +78,7 @@ impl OpenOptions {
             if self.total_blocks.is_none() {
                 return_errno_with_msg!(Errno::IoFailed, "the disk size must be given")
             }
-            return self.create_pfs_disk(path, disk);
+            return self.create_pfs_disk(path, disk, root_key);
         }
 
         // Open or create the PFS file
@@ -149,10 +149,14 @@ impl OpenOptions {
         Ok(pfs_disk)
     }
 
-    pub fn create_pfs_disk<D: BlockSet>(&self, path: &str, disk: D) -> Result<PfsDisk<D>> {
-        let mut file = create_pfs_file(path, disk)?;
-        let new_len = PFS_INNER_OFFSET
-            + PfsDisk::<D>::total_data_blocks(self.total_blocks.unwrap()) * BLOCK_SIZE;
+    pub fn create_pfs_disk<D: BlockSet>(
+        &self,
+        path: &str,
+        disk: D,
+        root_key: AeadKey,
+    ) -> Result<PfsDisk<D>> {
+        let mut file = create_pfs_file(path, disk, root_key)?;
+        let new_len = PFS_INNER_OFFSET + self.total_blocks.unwrap() * BLOCK_SIZE;
         write_zeros(&mut file, 0, new_len);
         let pfs_disk = PfsDisk {
             file: Mutex::new(file),
@@ -177,11 +181,11 @@ fn open_pfs_file<D: BlockSet>(path: &str, disk: D) -> Result<PfsFile<D>> {
 
 /// Create a PFS file with read and write permissions. The length of the
 /// opened file is zero.
-fn create_pfs_file<D: BlockSet>(path: &str, disk: D) -> Result<PfsFile<D>> {
+fn create_pfs_file<D: BlockSet>(path: &str, disk: D, root_key: AeadKey) -> Result<PfsFile<D>> {
     let ret = PfsOpenOptions::new()
         .write(true)
         .update(true)
-        .create_with_key(disk, path, AeadKey::default(), None)
+        .create_with_key(disk, path, root_key, None)
         .map_err(|e| e.to_errno());
     ret
 }

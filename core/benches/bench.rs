@@ -256,6 +256,14 @@ mod benches {
                     total_nblocks,
                     &format!("encdisk-{}.image", DISK_ID.fetch_add(1, Ordering::Release)),
                 )),
+                DiskType::PfsDisk => Arc::new(PfsDisk::create(
+                    FileAsDisk::create(
+                        total_nblocks,
+                        &format!("pfsdisk-{}.image", DISK_ID.fetch_add(1, Ordering::Release)),
+                    ),
+                    AeadKey::default(),
+                    None,
+                )?),
             };
             Ok(disk)
         }
@@ -389,6 +397,7 @@ mod disks {
     pub enum DiskType {
         SwornDisk,
         EncDisk,
+        PfsDisk,
     }
 
     pub trait BenchDisk: Send + Sync {
@@ -551,6 +560,42 @@ mod disks {
                 self.write(pos + rnd_pos, buf.as_ref())?;
             }
 
+            self.sync()
+        }
+    }
+
+    impl BenchDisk for PfsDisk<FileAsDisk> {
+        fn read_seq(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
+            let mut buf = Buf::alloc(buf_nblocks)?;
+            for i in 0..total_nblocks / buf_nblocks {
+                self.read(pos + i * buf_nblocks, buf.as_mut())?;
+            }
+            Ok(())
+        }
+
+        fn write_seq(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
+            let buf = Buf::alloc(buf_nblocks)?;
+            for i in 0..total_nblocks / buf_nblocks {
+                self.write(pos + i * buf_nblocks, buf.as_ref())?;
+            }
+            self.sync()
+        }
+
+        fn read_rnd(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
+            let mut buf = Buf::alloc(buf_nblocks)?;
+            for _ in 0..total_nblocks / buf_nblocks {
+                let rnd_pos = gen_rnd_pos(total_nblocks, buf_nblocks);
+                self.read(pos + rnd_pos, buf.as_mut())?;
+            }
+            Ok(())
+        }
+
+        fn write_rnd(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
+            let buf = Buf::alloc(buf_nblocks)?;
+            for _ in 0..total_nblocks / buf_nblocks {
+                let rnd_pos = gen_rnd_pos(total_nblocks, buf_nblocks);
+                self.write(pos + rnd_pos, buf.as_ref())?;
+            }
             self.sync()
         }
     }
