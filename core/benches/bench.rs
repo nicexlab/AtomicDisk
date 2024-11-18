@@ -13,24 +13,37 @@ use self::util::{DisplayData, DisplayThroughput};
 
 use libc::{fdatasync, ftruncate, open, pread, pwrite, unlink, O_CREAT, O_DIRECT, O_RDWR, O_TRUNC};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use std::time::Instant;
 
+static INIT_LOG: Once = Once::new();
+
+fn init_logger() {
+    INIT_LOG.call_once(|| {
+        env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Debug)
+            .try_init()
+            .unwrap();
+    });
+}
+
 fn main() {
-    let total_bytes = 512 * MiB;
+   // init_logger();
+    let total_bytes = 5 * GiB;
     // Specify all benchmarks
     let benches = vec![
-        BenchBuilder::new("SwornDisk::write_seq")
-            .disk_type(DiskType::SwornDisk)
+        BenchBuilder::new("PfsDisk::write_seq")
+            .disk_type(DiskType::PfsDisk)
             .io_type(IoType::Write)
             .io_pattern(IoPattern::Seq)
             .total_bytes(total_bytes)
-            .buf_size(512 * KiB)
+            .buf_size(4 * KiB)
             .concurrency(1)
             .build()
             .unwrap(),
-        BenchBuilder::new("SwornDisk::write_rnd")
-            .disk_type(DiskType::SwornDisk)
+        BenchBuilder::new("PfsDisk::write_rnd")
+            .disk_type(DiskType::PfsDisk)
             .io_type(IoType::Write)
             .io_pattern(IoPattern::Rnd)
             .total_bytes(total_bytes)
@@ -38,21 +51,57 @@ fn main() {
             .concurrency(1)
             .build()
             .unwrap(),
-        BenchBuilder::new("SwornDisk::read_seq")
-            .disk_type(DiskType::SwornDisk)
-            .io_type(IoType::Read)
-            .io_pattern(IoPattern::Seq)
+            BenchBuilder::new("PfsDisk::write_rnd")
+            .disk_type(DiskType::PfsDisk)
+            .io_type(IoType::Write)
+            .io_pattern(IoPattern::Rnd)
             .total_bytes(total_bytes)
-            .buf_size(1 * MiB)
+            .buf_size(32 * KiB)
             .concurrency(1)
             .build()
             .unwrap(),
-        BenchBuilder::new("SwornDisk::read_rnd")
-            .disk_type(DiskType::SwornDisk)
+            BenchBuilder::new("PfsDisk::write_rnd")
+            .disk_type(DiskType::PfsDisk)
+            .io_type(IoType::Write)
+            .io_pattern(IoPattern::Rnd)
+            .total_bytes(total_bytes)
+            .buf_size(256* KiB)
+            .concurrency(1)
+            .build()
+            .unwrap(),
+        BenchBuilder::new("PfsDisk::read_seq")
+            .disk_type(DiskType::PfsDisk)
+            .io_type(IoType::Read)
+            .io_pattern(IoPattern::Seq)
+            .total_bytes(total_bytes)
+            .buf_size(4 * KiB)
+            .concurrency(1)
+            .build()
+            .unwrap(),
+        BenchBuilder::new("PfsDisk::read_rnd")
+            .disk_type(DiskType::PfsDisk)
             .io_type(IoType::Read)
             .io_pattern(IoPattern::Rnd)
             .total_bytes(total_bytes)
             .buf_size(4 * KiB)
+            .concurrency(1)
+            .build()
+            .unwrap(),
+            BenchBuilder::new("PfsDisk::read_rnd")
+            .disk_type(DiskType::PfsDisk)
+            .io_type(IoType::Read)
+            .io_pattern(IoPattern::Rnd)
+            .total_bytes(total_bytes)
+            .buf_size(32 * KiB)
+            .concurrency(1)
+            .build()
+            .unwrap(),
+            BenchBuilder::new("PfsDisk::read_rnd")
+            .disk_type(DiskType::PfsDisk)
+            .io_type(IoType::Read)
+            .io_pattern(IoPattern::Rnd)
+            .total_bytes(total_bytes)
+            .buf_size(256 * KiB)
             .concurrency(1)
             .build()
             .unwrap(),
@@ -79,7 +128,7 @@ fn run_benches(benches: Vec<Box<dyn Bench>>) {
     let mut failed_count = 0;
     for b in benches {
         print!("bench {} ... ", &b);
-        b.prepare();
+        b.prepare().unwrap();
 
         let start = Instant::now();
         let res = b.run();
@@ -258,7 +307,7 @@ mod benches {
                 )),
                 DiskType::PfsDisk => Arc::new(PfsDisk::create(
                     FileAsDisk::create(
-                        total_nblocks,
+                        total_nblocks * 5 / 4, // TBD
                         &format!("pfsdisk-{}.image", DISK_ID.fetch_add(1, Ordering::Release)),
                     ),
                     AeadKey::default(),
@@ -576,6 +625,9 @@ mod disks {
         fn write_seq(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
             let buf = Buf::alloc(buf_nblocks)?;
             for i in 0..total_nblocks / buf_nblocks {
+                if i % 1000 == 0 {
+                    self.sync()?;
+                }
                 self.write(pos + i * buf_nblocks, buf.as_ref())?;
             }
             self.sync()
@@ -592,9 +644,14 @@ mod disks {
 
         fn write_rnd(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
             let buf = Buf::alloc(buf_nblocks)?;
+            let mut count = 0;
             for _ in 0..total_nblocks / buf_nblocks {
+                if count % 1000 == 0 {
+                    self.sync()?;
+                }
                 let rnd_pos = gen_rnd_pos(total_nblocks, buf_nblocks);
                 self.write(pos + rnd_pos, buf.as_ref())?;
+                count += 1;
             }
             self.sync()
         }
