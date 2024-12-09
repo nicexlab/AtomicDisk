@@ -48,3 +48,11 @@ doctest = false
 [[bench]]
 name = "bench"
 harness = false
+
+
+[profile.release]
+opt-level = "z"
+overflow-checks = false
+lto = "thin"
+debug = 1
+debug-assertions = false

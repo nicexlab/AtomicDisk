@@ -76,7 +76,7 @@ impl<D: BlockSet> FileInner<D> {
 
     pub fn write_to_disk(&mut self, flush: bool) -> FsResult {
         if self.is_need_write_node() {
-            for mut node in self.cache.iter().filter_map(|node| {
+            for mut node in self.cache.iter().rev().filter_map(|node| {
                 let node = node.borrow_mut();
                 if node.need_writing {
                     Some(node)
@@ -84,6 +84,7 @@ impl<D: BlockSet> FileInner<D> {
                     None
                 }
             }) {
+              //  info!("write node to disk: {:?}", node.logic_number);
                 node.write_to_disk(&mut self.host_file)?;
             }
             self.root_mht
@@ -217,7 +218,7 @@ impl<D: BlockSet> FileInner<D> {
             }
         }
 
-        mht_nodes.sort_by(|a, b| b.logic_number.cmp(&a.logic_number));
+      //  mht_nodes.sort_by(|a, b| b.logic_number.cmp(&a.logic_number));
 
         for node in mht_nodes.iter() {
             node.write_recovery_file(journal)?;

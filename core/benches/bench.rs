@@ -29,20 +29,22 @@ fn init_logger() {
 }
 
 fn main() {
-   // init_logger();
-    let total_bytes = 5 * GiB;
+   init_logger();
+    let total_bytes = 1 * GiB;
     // Specify all benchmarks
     let benches = vec![
-        BenchBuilder::new("PfsDisk::write_seq")
+
+ 
+            BenchBuilder::new("PfsDisk::write_seq")
             .disk_type(DiskType::PfsDisk)
             .io_type(IoType::Write)
             .io_pattern(IoPattern::Seq)
             .total_bytes(total_bytes)
-            .buf_size(4 * KiB)
+            .buf_size(1 * MiB)
             .concurrency(1)
             .build()
             .unwrap(),
-        BenchBuilder::new("PfsDisk::write_rnd")
+                   BenchBuilder::new("PfsDisk::write_rnd")
             .disk_type(DiskType::PfsDisk)
             .io_type(IoType::Write)
             .io_pattern(IoPattern::Rnd)
@@ -69,6 +71,7 @@ fn main() {
             .concurrency(1)
             .build()
             .unwrap(),
+
         BenchBuilder::new("PfsDisk::read_seq")
             .disk_type(DiskType::PfsDisk)
             .io_type(IoType::Read)
@@ -106,15 +109,6 @@ fn main() {
             .build()
             .unwrap(),
         // Benchmark on `EncDisk` not enabled by default
-        // BenchBuilder::new("EncDisk::write_seq")
-        //     .disk_type(DiskType::EncDisk)
-        //     .io_type(IoType::Write)
-        //     .io_pattern(IoPattern::Seq)
-        //     .total_bytes(total_bytes)
-        //     .buf_size(256 * KiB)
-        //     .concurrency(1)
-        //     .build()
-        //     .unwrap(),
     ];
 
     // Run all benchmarks and output the results
@@ -653,7 +647,7 @@ mod disks {
                 self.write(pos + rnd_pos, buf.as_ref())?;
                 count += 1;
             }
-            self.sync()
+           self.sync()
         }
     }
 
