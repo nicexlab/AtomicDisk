@@ -19,6 +19,8 @@ use kernel::{c_str, new_condvar, prelude::*, sync::CondVar};
 use sworndisk::{
     AeadKey, Arc, BlockId, BlockSet, Buf, BufMut, BufRef, Errno, Error, Mutex, SwornDisk, Vec,
 };
+use sworndisk::PfsDisk;
+
 
 use crate::bio::{Bio, BioOp, BioVec};
 use crate::block_device::{HostBlockDevice, BLOCK_SECTORS, BLOCK_SIZE};
@@ -70,14 +72,14 @@ impl Drop for TargetManager {
 /// A request queue, dispatching bios from device mapper to `RawDisk`.
 struct ReqQueue<D: BlockSet> {
     bios: Mutex<SegQueue<Bio>>,
-    disk: SwornDisk<D>,
+    disk: PfsDisk<D>,
     should_stop: AtomicBool,
     new_bio_condvar: Pin<Box<CondVar>>,
 }
 
 impl<D: BlockSet + 'static> ReqQueue<D> {
     /// Constructs a `ReqQueue`.
-    pub fn new(disk: SwornDisk<D>) -> Self {
+    pub fn new(disk: PfsDisk<D>) -> Self {
         Self {
             bios: Mutex::new(SegQueue::new()),
             disk,
@@ -415,12 +417,12 @@ impl DmTargetOps for DmSwornDisk {
         };
 
         let sworndisk = match should_format {
-            true => SwornDisk::create(raw_disk, root_key, None).map_err(|_| {
+            true => PfsDisk::create(raw_disk, root_key, None).map_err(|_| {
                 target.set_error(c_str!("Create sworndisk failed"));
                 ENODEV
             })?,
             // TODO: open with a `SyncIdStore`.
-            false => SwornDisk::open(raw_disk, root_key, None).map_err(|_| {
+            false => PfsDisk::open(raw_disk, root_key, None).map_err(|_| {
                 target.set_error(c_str!("Open sworndisk failed"));
                 ENODEV
             })?,

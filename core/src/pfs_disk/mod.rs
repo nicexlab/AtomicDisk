@@ -4,10 +4,46 @@ use crate::os::Mutex;
 use crate::os::SeekFrom;
 use crate::pfs::fs::SgxFile as PfsFile;
 use crate::pfs::sys::error::OsError;
-use crate::{prelude::*, AeadKey, BlockSet, BufMut};
+use crate::{prelude::*, BlockSet, BufMut};
 use crate::{BufRef, Errno};
-
+use crate::os::{Aead, AeadIv as Iv, AeadKey as Key, AeadMac as Mac};
 mod open_options;
+
+
+
+struct BufMutVec<'a> {
+    bufs: &'a mut [BufMut<'a>],
+    nblocks: usize,
+}
+
+impl<'a> BufMutVec<'a> {
+    pub fn from_bufs(bufs: &'a mut [BufMut<'a>]) -> Self {
+        debug_assert!(bufs.len() > 0);
+        let nblocks = bufs
+            .iter()
+            .map(|buf| buf.nblocks())
+            .fold(0_usize, |sum, nblocks| sum.saturating_add(nblocks));
+        Self { bufs, nblocks }
+    }
+
+    pub fn nblocks(&self) -> usize {
+        self.nblocks
+    }
+
+    pub fn nth_buf_mut_slice(&mut self, mut nth: usize) -> &mut [u8] {
+        debug_assert!(nth < self.nblocks);
+        for buf in self.bufs.iter_mut() {
+            let nblocks = buf.nblocks();
+            if nth >= buf.nblocks() {
+                nth -= nblocks;
+            } else {
+                return &mut buf.as_mut_slice()[nth * BLOCK_SIZE..(nth + 1) * BLOCK_SIZE];
+            }
+        }
+        &mut []
+    }
+}
+
 
 /// A virtual disk backed by a protected file of Intel SGX Protected File
 /// System Library (SGX-PFS).
@@ -33,7 +69,7 @@ const PFS_INNER_OFFSET: usize = 3 * 1024;
 
 impl<D: BlockSet> PfsDisk<D> {
     /// Open a disk backed by an existing PFS file on the host.
-    pub fn open(disk: D, root_key: AeadKey, path: Option<&str>) -> Result<Self> {
+    pub fn open(disk: D, root_key: Key, path: Option<&str>) -> Result<Self> {
         let path = path.unwrap_or("pfsdisk");
         OpenOptions::new()
             .read(true)
@@ -42,7 +78,7 @@ impl<D: BlockSet> PfsDisk<D> {
     }
 
     /// Open a disk by opening or creating a PFS file on the give path.
-    pub fn create(disk: D, root_key: AeadKey, path: Option<&str>) -> Result<Self> {
+    pub fn create(disk: D, root_key: Key, path: Option<&str>) -> Result<Self> {
         let path = path.unwrap_or("pfsdisk");
         let total_blocks = PfsDisk::<D>::total_data_blocks(disk.nblocks());
         OpenOptions::new()
@@ -71,6 +107,22 @@ impl<D: BlockSet> PfsDisk<D> {
         Ok(())
     }
 
+    pub fn readv<'a>(&self,addr: usize, bufs: &'a mut [BufMut<'a>]) -> Result<()> {
+        let mut buf_vec = BufMutVec::from_bufs(bufs);
+        let nblocks = buf_vec.nblocks();
+
+        for i in 0..nblocks {
+            let buf = buf_vec.nth_buf_mut_slice(i);
+            self.validate_range(addr)?;
+
+            let offset = (addr + i) * BLOCK_SIZE + PFS_INNER_OFFSET;
+            let mut file = self.file.lock();
+            file.seek(SeekFrom::Start(offset as u64)).unwrap();
+            file.read(buf).unwrap();
+        }
+        Ok(())
+    }
+
     pub fn write(&self, addr: usize, buf: BufRef) -> Result<()> {
         if !self.can_write {
             return_errno_with_msg!(Errno::IoFailed, "write is not allowed")
@@ -80,6 +132,14 @@ impl<D: BlockSet> PfsDisk<D> {
         let mut file = self.file.lock();
         file.seek(SeekFrom::Start(offset as u64)).unwrap();
         file.write(buf.as_slice()).unwrap();
+        Ok(())
+    }
+
+    pub fn writev(&self, mut addr: usize, bufs: &[BufRef]) -> Result<()> {
+        for buf in bufs {
+            self.write(addr, *buf)?;
+            addr += buf.nblocks();
+        }
         Ok(())
     }
 
@@ -238,7 +298,7 @@ mod test {
 
     #[test]
     fn test_read_write() {
-        let root_key = AeadKey::default();
+        let root_key = Key::default();
         let disk = MemDisk::create(100).unwrap();
         let disk = PfsDisk::create(disk, root_key, None).unwrap();
         let data_buf = vec![1u8; BLOCK_SIZE];
@@ -253,7 +313,7 @@ mod test {
     #[test]
     fn multi_block_read_write() {
         init_logger();
-        let root_key = AeadKey::default();
+        let root_key = Key::default();
         let disk = MemDisk::create(11000).unwrap();
         let disk = PfsDisk::create(disk, root_key, None).unwrap();
 
