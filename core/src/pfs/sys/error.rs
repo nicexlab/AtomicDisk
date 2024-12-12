@@ -363,7 +363,7 @@ impl fmt::Display for FsError {
         match self {
             Self::SgxError(status) => write!(fmt, "sgx error {}", status.as_str()),
             Self::OsError(errno) => write!(fmt, "os error {}", errno),
-            Self::Errno(errno) => write!(fmt, "errno {}", errno.to_string()),
+            Self::Errno(errno) => write!(fmt, "errno {}", errno),
         }
     }
 }
