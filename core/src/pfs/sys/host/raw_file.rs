@@ -447,6 +447,7 @@ pub fn recovery(source: &Path, recovery: &Path) -> FsResult<HashMap<u64, Arc<Ref
                     if !rollback_nodes.contains_key(&physical_node_number)
                         && !RecoveryHandler::is_mht_node(physical_node_number)
                     {
+                        #[cfg(not(feature = "linux"))]
                         debug!("insert committed node: {}", physical_node_number);
                         let encrypted_data = EncryptedData {
                             data: data_buf[8..].try_into().unwrap(),

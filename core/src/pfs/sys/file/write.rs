@@ -21,7 +21,7 @@ use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNodeRef, NODE_SIZE};
 use crate::{bail, ensure, eos, BlockSet};
-
+use crate::prelude::error;
 #[cfg(feature = "tfs")]
 use sgx_trts::trts::EnclaveRange;
 
@@ -65,7 +65,8 @@ impl<D: BlockSet> FileInner<D> {
             let file_node = match self.get_data_node() {
                 Ok(node) => node,
                 Err(error) => {
-                    log::error!("get_data_node error: {:?}", error);
+                    #[cfg(not(feature = "linux"))]
+                    error!("get_data_node error: {:?}", error);
                     self.set_last_error(error.clone());
                     return Err(error);
                 }

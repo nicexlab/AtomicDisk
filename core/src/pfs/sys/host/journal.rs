@@ -91,11 +91,13 @@ pub struct RecoveryJournal<D> {
 
 impl<D: BlockSet> RecoveryJournal<D> {
     pub fn create(disk: D) -> RecoveryJournal<D> {
+        #[cfg(not(feature = "linux"))]
         info!(
             "created recovery journal, range [{}, {})",
             0,
             disk.nblocks()
         );
+
         Self {
             raw: RawJournal::create(disk),
         }
@@ -213,6 +215,7 @@ pub fn recovery<D: BlockSet>(
                     if !rollback_nodes.contains_key(&physical_node_number)
                         && !RecoveryHandler::is_mht_node(physical_node_number)
                     {
+                        #[cfg(not(feature = "linux"))]
                         debug!("insert committed node: {}", physical_node_number);
                         let encrypted_data = EncryptedData {
                             data: data_buf[8..].try_into().unwrap(),

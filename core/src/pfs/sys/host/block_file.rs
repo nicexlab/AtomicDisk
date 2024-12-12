@@ -18,6 +18,7 @@ pub struct BlockFile<D> {
 
 impl<D: BlockSet> BlockFile<D> {
     pub fn create(raw_disk: D) -> Self {
+        #[cfg(not(feature = "linux"))]
         info!("created host file, range [{}, {})", 0, raw_disk.nblocks());
         let size = raw_disk.nblocks() * NODE_SIZE;
         Self { raw_disk, size }

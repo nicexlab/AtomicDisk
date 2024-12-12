@@ -192,6 +192,7 @@ fn create_pfs_file<D: BlockSet>(path: &str, disk: D, root_key: AeadKey) -> Resul
 
 fn write_zeros<D: BlockSet>(pfs_file: &mut PfsFile<D>, begin: usize, end: usize) {
     debug_assert!(begin <= end);
+    #[cfg(not(feature = "linux"))]
     info!("write zeros from {} to {}", begin, end);
     const ZEROS: [u8; BLOCK_SIZE] = [0; BLOCK_SIZE];
 

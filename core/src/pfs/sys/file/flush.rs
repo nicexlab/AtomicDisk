@@ -53,6 +53,7 @@ impl<D: BlockSet> FileInner<D> {
 
             self.update_nodes().map_err(|error| {
                 self.clear_update_flag();
+                #[cfg(not(feature = "linux"))]
                 error!("update nodes failed: {:?}", error);
                 self.set_file_status(FileStatus::FlushError);
                 error
@@ -84,7 +85,6 @@ impl<D: BlockSet> FileInner<D> {
                     None
                 }
             }) {
-              //  info!("write node to disk: {:?}", node.logic_number);
                 node.write_to_disk(&mut self.host_file)?;
             }
             self.root_mht
