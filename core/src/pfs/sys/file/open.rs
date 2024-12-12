@@ -43,7 +43,7 @@ macro_rules! is_page_aligned {
     };
 }
 
-pub const DEFAULT_CACHE_SIZE: usize = 48 * SE_PAGE_SIZE;
+pub const DEFAULT_CACHE_SIZE: usize = 2400 * SE_PAGE_SIZE;
 
 impl<D: BlockSet> FileInner<D> {
     pub fn open(
