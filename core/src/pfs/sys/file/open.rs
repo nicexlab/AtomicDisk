@@ -34,7 +34,7 @@ use crate::pfs::sys::metadata::{
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType, NODE_SIZE};
 use crate::{bail, ensure, eos, AeadKey, BlockSet};
 use core::cell::RefCell;
-use crate::prelude::info;
+use crate::prelude::*;
 
 pub const SE_PAGE_SIZE: usize = 0x1000;
 macro_rules! is_page_aligned {
