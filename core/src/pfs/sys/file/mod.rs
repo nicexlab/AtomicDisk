@@ -449,6 +449,8 @@ pub enum CloseMode {
     Export,
 }
 
+
+#[cfg(test)]
 mod test {
     use std::{path::Path, sync::Once};
 

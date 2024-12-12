@@ -22,8 +22,7 @@ use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNodeRef, NODE_SIZE};
 use crate::{bail, ensure, eos, BlockSet};
 use crate::prelude::error;
-#[cfg(feature = "tfs")]
-use sgx_trts::trts::EnclaveRange;
+
 
 impl<D: BlockSet> FileInner<D> {
     pub fn write(&mut self, buf: &[u8]) -> FsResult<usize> {

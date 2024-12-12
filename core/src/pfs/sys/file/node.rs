@@ -276,6 +276,7 @@ impl<D: BlockSet> FileInner<D> {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::layers::bio::MemDisk;
 

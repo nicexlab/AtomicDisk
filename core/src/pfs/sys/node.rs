@@ -29,10 +29,10 @@ use crate::{
     impl_asmut_slice, impl_asref_slice, impl_struct_ContiguousMemory, impl_struct_default, Aead,
     AeadKey, AeadMac,
 };
-use std::cell::RefCell;
-use std::cmp::Ordering;
-use std::mem;
-use std::sync::Arc;
+use core::cell::RefCell;
+use core::cmp::Ordering;
+use core::mem;
+use crate::os::Arc;
 
 use super::error::SgxStatus;
 use super::host::HostFs;

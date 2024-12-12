@@ -12,8 +12,7 @@ use core::cell::RefCell;
 pub mod block_file;
 pub mod journal;
 
-#[cfg(feature = "occlum")]
-pub mod raw_file;
+
 
 const MILISECONDS_SLEEP_FOPEN: u32 = 10;
 const MAX_FOPEN_RETRIES: usize = 10;
@@ -244,6 +243,7 @@ impl RecoveryHandler {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use core::cell::RefCell;
     use std::sync::Arc;
