@@ -30,6 +30,7 @@ impl<'a> BufMutVec<'a> {
         self.nblocks
     }
 
+
     pub fn nth_buf_mut_slice(&mut self, mut nth: usize) -> &mut [u8] {
         debug_assert!(nth < self.nblocks);
         for buf in self.bufs.iter_mut() {
@@ -227,6 +228,10 @@ impl<D: BlockSet> PfsDisk<D> {
     }
     fn total_data_blocks(total_blocks: usize) -> usize {
         total_blocks * 13 / 16
+    }
+
+    pub fn total_blocks(&self) -> usize {
+        self.total_blocks
     }
 }
 

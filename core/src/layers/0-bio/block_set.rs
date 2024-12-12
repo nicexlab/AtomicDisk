@@ -162,13 +162,8 @@ impl BlockSet for MemDisk {
     fn write(&self, pos: BlockId, buf: BufRef) -> Result<()> {
         if pos + buf.nblocks() > self.region.end {
             return_errno_with_msg!(
-                Errno::InvalidArgs,
-                format!(
-                    "write position is out of range, pos: {}, range: [{}, {}])",
-                    pos, self.region.start, self.region.end
-                )
-                .leak()
-            );
+                Errno::InvalidArgs,"write position is out of range"
+        );
         }
         let offset = (self.region.start + pos) * BLOCK_SIZE;
         let buf_len = buf.as_slice().len();

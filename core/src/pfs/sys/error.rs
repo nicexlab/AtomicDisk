@@ -335,18 +335,18 @@ impl FsError {
         }
     }
 
-    pub fn set_errno(&self) {
-        extern "C" {
-            #[cfg_attr(target_os = "linux", link_name = "__errno_location")]
-            fn errno_location() -> *mut i32;
-        }
-        let e = match self {
-            Self::SgxError(status) => *status as i32,
-            Self::OsError(errno) => *errno,
-            Self::Errno(errno) => errno.errno() as i32,
-        };
-        unsafe { *errno_location() = e }
-    }
+    // pub fn set_errno(&self) {
+    //     extern "C" {
+    //         #[cfg_attr(target_os = "linux", link_name = "__errno_location")]
+    //         fn errno_location() -> *mut i32;
+    //     }
+    //     let e = match self {
+    //         Self::SgxError(status) => *status as i32,
+    //         Self::OsError(errno) => *errno,
+    //         Self::Errno(errno) => errno.errno() as i32,
+    //     };
+    //     unsafe { *errno_location() = e }
+    // }
 
     #[allow(dead_code)]
     pub fn to_errno(self) -> crate::Error {

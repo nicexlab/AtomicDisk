@@ -21,7 +21,7 @@ use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNodeRef, NODE_SIZE};
 use crate::{bail, ensure, eos, BlockSet};
-use crate::prelude::error;
+use crate::prelude::*;
 
 
 impl<D: BlockSet> FileInner<D> {
