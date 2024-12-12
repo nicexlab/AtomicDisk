@@ -278,8 +278,7 @@ impl FileNode {
                 &iv,
                 &[],
                 &mut self.ciphertext.node_data.as_mut(),
-            )
-            .unwrap();
+            )?;
 
         if let Some(parent) = parent {
             let index = match self.node_type {
@@ -320,8 +319,7 @@ impl FileNode {
                 &[],
                 mac,
                 self.plaintext.as_mut(),
-            )
-            .unwrap();
+            )?;
 
         Ok(())
     }
