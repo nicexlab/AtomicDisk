@@ -12,7 +12,7 @@ use crate::{
     BlockSet, Buf, Errno, Error, BLOCK_SIZE,
 };
 use core::{cell::RefCell, ffi::CStr};
-use log::{debug, info};
+use crate::prelude::*;
 
 // 4MB
 const DEFAULT_BUF_SIZE: usize = 4 * 1024 * 1024;

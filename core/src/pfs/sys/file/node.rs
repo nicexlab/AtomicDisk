@@ -21,7 +21,6 @@ use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType};
 use crate::pfs::sys::node::{ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE};
 use crate::{bail, ensure, eos, BlockSet};
-use log::{debug, info};
 
 impl<D: BlockSet> FileInner<D> {
     pub fn get_data_node(&mut self) -> FsResult<FileNodeRef> {

@@ -22,7 +22,7 @@ use crate::pfs::sys::host::{self, HostFs};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
 use crate::{bail, ensure, eos, BlockSet};
-use crate::prelude::error;
+use crate::prelude::*;
 
 impl<D: BlockSet> FileInner<D> {
     pub fn flush(&mut self) -> FsResult {

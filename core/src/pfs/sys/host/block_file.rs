@@ -8,7 +8,7 @@ use crate::{
     },
     BlockId, BlockSet, BufMut, BufRef, Errno, Error,
 };
-use log::info;
+use crate::prelude::*;
 
 #[derive(Debug)]
 pub struct BlockFile<D> {
