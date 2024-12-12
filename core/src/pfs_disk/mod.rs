@@ -274,6 +274,7 @@ impl<D: BlockSet> fmt::Debug for PfsDisk<D> {
     }
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
     use crate::{
