@@ -26,24 +26,24 @@ pub type NodeRef<T> = Arc<RefCell<T>>;
 
 #[derive(Debug)]
 struct LruEntry<T> {
-    node_ref: NonNull<Node<u64>>,
+    node_ref: NonNull<Node>,
     value: NodeRef<T>,
 }
 
 impl<T> LruEntry<T> {
-    fn new(node_ref: NonNull<Node<u64>>, value: NodeRef<T>) -> LruEntry<T> {
+    fn new(node_ref: NonNull<Node>, value: NodeRef<T>) -> LruEntry<T> {
         LruEntry { node_ref, value }
     }
 }
 
 pub struct Iter<'a, T: 'a> {
-    iter: list::Iter<'a, u64>,
+    iter: list::Iter<'a>,
     map: &'a HashMap<u64, LruEntry<T>>,
 }
 
 #[derive(Debug)]
 pub struct LruCache<T> {
-    list: LinkedList<u64>,
+    list: LinkedList,
     map: HashMap<u64, LruEntry<T>>,
     max_size: usize,
 }

@@ -22,27 +22,27 @@ use core::mem;
 use core::ptr::NonNull;
 use crate::prelude::*;
 /// A doubly-linked list with owned nodes.
-pub struct LinkedList<T> {
-    head: Option<NonNull<Node<T>>>,
-    tail: Option<NonNull<Node<T>>>,
+pub struct LinkedList {
+    head: Option<NonNull<Node>>,
+    tail: Option<NonNull<Node>>,
     len: usize,
-    marker: PhantomData<Box<Node<T>>>,
+    marker: PhantomData<Box<Node>>,
 }
 
-pub struct Node<T> {
-    next: Option<NonNull<Node<T>>>,
-    prev: Option<NonNull<Node<T>>>,
-    element: T,
+pub struct Node {
+    next: Option<NonNull<Node>>,
+    prev: Option<NonNull<Node>>,
+    element: u64,
 }
 
-pub struct Iter<'a, T: 'a> {
-    head: Option<NonNull<Node<T>>>,
-    tail: Option<NonNull<Node<T>>>,
+pub struct Iter<'a> {
+    head: Option<NonNull<Node>>,
+    tail: Option<NonNull<Node>>,
     len: usize,
-    marker: PhantomData<&'a Node<T>>,
+    marker: PhantomData<&'a Node>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for Iter<'_, T> {
+impl<'a> fmt::Debug for Iter<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Iter")
             .field(&*mem::ManuallyDrop::new(LinkedList {
@@ -56,21 +56,21 @@ impl<T: fmt::Debug> fmt::Debug for Iter<'_, T> {
     }
 }
 
-impl<T> Clone for Iter<'_, T> {
+impl<'a> Clone for Iter<'a> {
     fn clone(&self) -> Self {
         Iter { ..*self }
     }
 }
 
 /// A mutable iterator over the elements of a `LinkedList`.
-pub struct IterMut<'a, T: 'a> {
-    head: Option<NonNull<Node<T>>>,
-    tail: Option<NonNull<Node<T>>>,
+pub struct IterMut<'a> {
+    head: Option<NonNull<Node>>,
+    tail: Option<NonNull<Node>>,
     len: usize,
-    marker: PhantomData<&'a mut Node<T>>,
+    marker: PhantomData<&'a mut Node>,
 }
 
-impl<T: fmt::Debug> fmt::Debug for IterMut<'_, T> {
+impl<'a> fmt::Debug for IterMut<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("IterMut")
             .field(&*mem::ManuallyDrop::new(LinkedList {
@@ -85,18 +85,18 @@ impl<T: fmt::Debug> fmt::Debug for IterMut<'_, T> {
 }
 
 /// An owning iterator over the elements of a `LinkedList`.
-pub struct IntoIter<T> {
-    list: LinkedList<T>,
+pub struct IntoIter {
+    list: LinkedList,
 }
 
-impl<T: fmt::Debug> fmt::Debug for IntoIter<T> {
+impl fmt::Debug for IntoIter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("IntoIter").field(&self.list).finish()
     }
 }
 
-impl<T> Node<T> {
-    fn new(element: T) -> Self {
+impl Node {
+    fn new(element: u64) -> Self {
         Node {
             next: None,
             prev: None,
@@ -105,16 +105,16 @@ impl<T> Node<T> {
     }
 
     #[allow(clippy::boxed_local)]
-    fn into_element(self: Box<Self>) -> T {
+    fn into_element(self: Box<Self>) -> u64 {
         self.element
     }
 }
 
 // private methods
-impl<T> LinkedList<T> {
+impl LinkedList {
     /// Adds the given node to the front of the list.
     #[inline]
-    fn push_front_node(&mut self, mut node: Box<Node<T>>) {
+    fn push_front_node(&mut self, mut node: Box<Node>) {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         unsafe {
@@ -135,7 +135,7 @@ impl<T> LinkedList<T> {
 
     /// Removes and returns the node at the front of the list.
     #[inline]
-    fn pop_front_node(&mut self) -> Option<Box<Node<T>>> {
+    fn pop_front_node(&mut self) -> Option<Box<Node>> {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         self.head.map(|node| unsafe {
@@ -155,7 +155,7 @@ impl<T> LinkedList<T> {
 
     /// Adds the given node to the back of the list.
     #[inline]
-    fn push_back_node(&mut self, mut node: Box<Node<T>>) {
+    fn push_back_node(&mut self, mut node: Box<Node>) {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         unsafe {
@@ -176,7 +176,7 @@ impl<T> LinkedList<T> {
 
     /// Removes and returns the node at the back of the list.
     #[inline]
-    fn pop_back_node(&mut self) -> Option<Box<Node<T>>> {
+    fn pop_back_node(&mut self) -> Option<Box<Node>> {
         // This method takes care not to create mutable references to whole nodes,
         // to maintain validity of aliasing pointers into `element`.
         self.tail.map(|node| unsafe {
@@ -201,7 +201,7 @@ impl<T> LinkedList<T> {
     /// This method takes care not to create mutable references to `element`, to
     /// maintain validity of aliasing pointers.
     #[inline]
-    unsafe fn unlink_node(&mut self, mut node: NonNull<Node<T>>) {
+    unsafe fn unlink_node(&mut self, mut node: NonNull<Node>) {
         let node = node.as_mut(); // this one is ours now, we can create an &mut.
 
         // Not creating new mutable (unique!) references overlapping `element`.
@@ -220,7 +220,7 @@ impl<T> LinkedList<T> {
         self.len -= 1;
     }
 
-    pub unsafe fn move_to_head(&mut self, mut node: NonNull<Node<T>>) {
+    pub unsafe fn move_to_head(&mut self, mut node: NonNull<Node>) {
         if self.is_empty() {
             return;
         }
@@ -249,7 +249,7 @@ impl<T> LinkedList<T> {
         self.head = node;
     }
 
-    pub unsafe fn move_to_tail(&mut self, mut node: NonNull<Node<T>>) {
+    pub unsafe fn move_to_tail(&mut self, mut node: NonNull<Node>) {
         if self.is_empty() {
             return;
         }
@@ -279,17 +279,17 @@ impl<T> LinkedList<T> {
     }
 
     #[inline]
-    pub unsafe fn head_node_ref(&self) -> Option<NonNull<Node<T>>> {
+    pub unsafe fn head_node_ref(&self) -> Option<NonNull<Node>> {
         self.head
     }
 
     #[inline]
-    pub unsafe fn tail_node_ref(&self) -> Option<NonNull<Node<T>>> {
+    pub unsafe fn tail_node_ref(&self) -> Option<NonNull<Node>> {
         self.tail
     }
 }
 
-impl<T> Default for LinkedList<T> {
+impl Default for LinkedList {
     /// Creates an empty `LinkedList<T>`.
     #[inline]
     fn default() -> Self {
@@ -297,7 +297,7 @@ impl<T> Default for LinkedList<T> {
     }
 }
 
-impl<T> LinkedList<T> {
+impl LinkedList {
     /// Creates an empty `LinkedList`.
     pub const fn new() -> Self {
         LinkedList {
@@ -330,7 +330,7 @@ impl<T> LinkedList<T> {
 
     /// Provides a forward iterator.
     #[inline]
-    pub fn iter(&self) -> Iter<'_, T> {
+    pub fn iter(&self) -> Iter {
         Iter {
             head: self.head,
             tail: self.tail,
@@ -341,7 +341,7 @@ impl<T> LinkedList<T> {
 
     /// Provides a forward iterator with mutable references.
     #[inline]
-    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
+    pub fn iter_mut(&mut self) -> IterMut {
         IterMut {
             head: self.head,
             tail: self.tail,
@@ -370,67 +370,64 @@ impl<T> LinkedList<T> {
 
     /// Returns `true` if the `LinkedList` contains an element equal to the
     /// given value.
-    pub fn contains(&self, x: &T) -> bool
-    where
-        T: PartialEq<T>,
-    {
+    pub fn contains(&self, x: &u64) -> bool {
         self.iter().any(|e| e == x)
     }
 
     /// Provides a reference to the front element, or `None` if the list is
     /// empty.
     #[inline]
-    pub fn front(&self) -> Option<&T> {
+    pub fn front(&self) -> Option<&u64> {
         unsafe { self.head.as_ref().map(|node| &node.as_ref().element) }
     }
 
     /// Provides a mutable reference to the front element, or `None` if the list
     /// is empty.
     #[inline]
-    pub fn front_mut(&mut self) -> Option<&mut T> {
+    pub fn front_mut(&mut self) -> Option<&mut u64> {
         unsafe { self.head.as_mut().map(|node| &mut node.as_mut().element) }
     }
 
     /// Provides a reference to the back element, or `None` if the list is
     /// empty.
     #[inline]
-    pub fn back(&self) -> Option<&T> {
+    pub fn back(&self) -> Option<&u64> {
         unsafe { self.tail.as_ref().map(|node| &node.as_ref().element) }
     }
 
     /// Provides a mutable reference to the back element, or `None` if the list
     /// is empty.
     #[inline]
-    pub fn back_mut(&mut self) -> Option<&mut T> {
+    pub fn back_mut(&mut self) -> Option<&mut u64> {
         unsafe { self.tail.as_mut().map(|node| &mut node.as_mut().element) }
     }
 
     /// Adds an element first in the list.
-    pub fn push_front(&mut self, elt: T) {
+    pub fn push_front(&mut self, elt: u64) {
         self.push_front_node(Box::new(Node::new(elt)));
     }
 
     /// Removes the first element and returns it, or `None` if the list is
     /// empty.
-    pub fn pop_front(&mut self) -> Option<T> {
+        pub fn pop_front(&mut self) -> Option<u64> {
         self.pop_front_node().map(Node::into_element)
     }
 
     /// Appends an element to the back of a list.
-    pub fn push_back(&mut self, elt: T) {
+    pub fn push_back(&mut self, elt: u64) {
         self.push_back_node(Box::new(Node::new(elt)));
     }
 
     /// Removes the last element from a list and returns it, or `None` if
     /// it is empty.
-    pub fn pop_back(&mut self) -> Option<T> {
+    pub fn pop_back(&mut self) -> Option<u64> {
         self.pop_back_node().map(Node::into_element)
     }
 
     /// Creates an iterator which uses a closure to determine if an element should be removed.
-    pub fn drain_filter<F>(&mut self, filter: F) -> DrainFilter<'_, T, F>
+    pub fn drain_filter<F>(&mut self, filter: F) -> DrainFilter<'_, F>
     where
-        F: FnMut(&mut T) -> bool,
+        F: FnMut(&mut u64) -> bool,
     {
         // avoid borrow issues.
         let it = self.head;
@@ -446,11 +443,11 @@ impl<T> LinkedList<T> {
     }
 }
 
-impl<T> Drop for LinkedList<T> {
+impl Drop for LinkedList {
     fn drop(&mut self) {
-        struct DropGuard<'a, T>(&'a mut LinkedList<T>);
+        struct DropGuard<'a>(&'a mut LinkedList);
 
-        impl<'a, T> Drop for DropGuard<'a, T> {
+        impl<'a> Drop for DropGuard<'a> {
             fn drop(&mut self) {
                 // Continue the same loop we do below. This only runs when a destructor has
                 // panicked. If another one panics this will abort.
@@ -466,11 +463,11 @@ impl<T> Drop for LinkedList<T> {
     }
 }
 
-impl<'a, T> Iterator for Iter<'a, T> {
-    type Item = &'a T;
+impl<'a> Iterator for Iter<'a> {
+    type Item = &'a u64;
 
     #[inline]
-    fn next(&mut self) -> Option<&'a T> {
+    fn next(&mut self) -> Option<&'a u64> {
         if self.len == 0 {
             None
         } else {
@@ -490,14 +487,14 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 
     #[inline]
-    fn last(mut self) -> Option<&'a T> {
+    fn last(mut self) -> Option<&'a u64> {
         self.next_back()
     }
 }
 
-impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+impl<'a> DoubleEndedIterator for Iter<'a> {
     #[inline]
-    fn next_back(&mut self) -> Option<&'a T> {
+    fn next_back(&mut self) -> Option<&'a u64> {
         if self.len == 0 {
             None
         } else {
@@ -512,13 +509,13 @@ impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
     }
 }
 
-impl<T> ExactSizeIterator for Iter<'_, T> {}
+impl<'a> ExactSizeIterator for Iter<'a> {}
 
-impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = &'a mut T;
+impl<'a> Iterator for IterMut<'a> {
+    type Item = &'a mut u64;
 
     #[inline]
-    fn next(&mut self) -> Option<&'a mut T> {
+    fn next(&mut self) -> Option<&'a mut u64> {
         if self.len == 0 {
             None
         } else {
@@ -538,14 +535,14 @@ impl<'a, T> Iterator for IterMut<'a, T> {
     }
 
     #[inline]
-    fn last(mut self) -> Option<&'a mut T> {
+    fn last(mut self) -> Option<&'a mut u64> {
         self.next_back()
     }
 }
 
-impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+impl<'a> DoubleEndedIterator for IterMut<'a> {
     #[inline]
-    fn next_back(&mut self) -> Option<&'a mut T> {
+    fn next_back(&mut self) -> Option<&'a mut u64> {
         if self.len == 0 {
             None
         } else {
@@ -560,27 +557,27 @@ impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
     }
 }
 
-impl<T> ExactSizeIterator for IterMut<'_, T> {}
+impl<'a> ExactSizeIterator for IterMut<'a> {}
 
 /// An iterator produced by calling `drain_filter` on LinkedList.
-pub struct DrainFilter<'a, T: 'a, F: 'a>
+pub struct DrainFilter<'a, F: 'a>
 where
-    F: FnMut(&mut T) -> bool,
+    F: FnMut(&mut u64) -> bool,
 {
-    list: &'a mut LinkedList<T>,
-    it: Option<NonNull<Node<T>>>,
+    list: &'a mut LinkedList,
+    it: Option<NonNull<Node>>,
     pred: F,
     idx: usize,
     old_len: usize,
 }
 
-impl<T, F> Iterator for DrainFilter<'_, T, F>
+impl<'a, F> Iterator for DrainFilter<'a, F>
 where
-    F: FnMut(&mut T) -> bool,
+    F: FnMut(&mut u64) -> bool,
 {
-    type Item = T;
+    type Item = u64;
 
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<u64> {
         while let Some(mut node) = self.it {
             unsafe {
                 self.it = node.as_ref().next;
@@ -602,18 +599,18 @@ where
     }
 }
 
-impl<T, F> Drop for DrainFilter<'_, T, F>
+impl<'a, F> Drop for DrainFilter<'a, F>
 where
-    F: FnMut(&mut T) -> bool,
+    F: FnMut(&mut u64) -> bool,
 {
     fn drop(&mut self) {
-        struct DropGuard<'r, 'a, T, F>(&'r mut DrainFilter<'a, T, F>)
+        struct DropGuard<'r, 'a, F>(&'r mut DrainFilter<'a, F>)
         where
-            F: FnMut(&mut T) -> bool;
+            F: FnMut(&mut u64) -> bool;
 
-        impl<'r, 'a, T, F> Drop for DropGuard<'r, 'a, T, F>
+        impl<'r, 'a, F> Drop for DropGuard<'r, 'a, F>
         where
-            F: FnMut(&mut T) -> bool,
+            F: FnMut(&mut u64) -> bool,
         {
             fn drop(&mut self) {
                 self.0.for_each(drop);
@@ -628,20 +625,20 @@ where
     }
 }
 
-impl<T: fmt::Debug, F> fmt::Debug for DrainFilter<'_, T, F>
+impl<'a, F> fmt::Debug for DrainFilter<'a, F>
 where
-    F: FnMut(&mut T) -> bool,
+    F: FnMut(&mut u64) -> bool,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("DrainFilter").field(&self.list).finish()
     }
 }
 
-impl<T> Iterator for IntoIter<T> {
-    type Item = T;
+impl Iterator for IntoIter {
+    type Item = u64;
 
     #[inline]
-    fn next(&mut self) -> Option<T> {
+    fn next(&mut self) -> Option<u64> {
         self.list.pop_front()
     }
 
@@ -651,45 +648,45 @@ impl<T> Iterator for IntoIter<T> {
     }
 }
 
-impl<T> DoubleEndedIterator for IntoIter<T> {
+impl DoubleEndedIterator for IntoIter {
     #[inline]
-    fn next_back(&mut self) -> Option<T> {
+    fn next_back(&mut self) -> Option<u64> {
         self.list.pop_back()
     }
 }
 
-impl<T> ExactSizeIterator for IntoIter<T> {}
+impl ExactSizeIterator for IntoIter {}
 
-impl<T> IntoIterator for LinkedList<T> {
-    type Item = T;
-    type IntoIter = IntoIter<T>;
+impl IntoIterator for LinkedList {
+    type Item = u64;
+    type IntoIter = IntoIter;
 
     /// Consumes the list into an iterator yielding elements by value.
     #[inline]
-    fn into_iter(self) -> IntoIter<T> {
+    fn into_iter(self) -> IntoIter {
         IntoIter { list: self }
     }
 }
 
-impl<'a, T> IntoIterator for &'a LinkedList<T> {
-    type Item = &'a T;
-    type IntoIter = Iter<'a, T>;
+impl<'a> IntoIterator for &'a LinkedList {
+    type Item = &'a u64;
+    type IntoIter = Iter<'a>;
 
-    fn into_iter(self) -> Iter<'a, T> {
+    fn into_iter(self) -> Iter<'a> {
         self.iter()
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut LinkedList<T> {
-    type Item = &'a mut T;
-    type IntoIter = IterMut<'a, T>;
+impl<'a> IntoIterator for &'a mut LinkedList {
+    type Item = &'a mut u64;
+    type IntoIter = IterMut<'a>;
 
-    fn into_iter(self) -> IterMut<'a, T> {
+    fn into_iter(self) -> IterMut<'a> {
         self.iter_mut()
     }
 }
 
-impl<T: PartialEq> PartialEq for LinkedList<T> {
+impl PartialEq for LinkedList {
     fn eq(&self, other: &Self) -> bool {
         self.len() == other.len() && self.iter().eq(other)
     }
@@ -700,28 +697,28 @@ impl<T: PartialEq> PartialEq for LinkedList<T> {
     }
 }
 
-impl<T: Eq> Eq for LinkedList<T> {}
+impl Eq for LinkedList {}
 
-impl<T: PartialOrd> PartialOrd for LinkedList<T> {
+impl PartialOrd for LinkedList {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.iter().partial_cmp(other)
     }
 }
 
-impl<T: Ord> Ord for LinkedList<T> {
+impl Ord for LinkedList {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.iter().cmp(other)
     }
 }
 
-impl<T: fmt::Debug> fmt::Debug for LinkedList<T> {
+impl fmt::Debug for LinkedList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list().entries(self).finish()
     }
 }
 
-impl<T: Hash> Hash for LinkedList<T> {
+impl Hash for LinkedList {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.len().hash(state);
         for elt in self {
@@ -730,9 +727,9 @@ impl<T: Hash> Hash for LinkedList<T> {
     }
 }
 
-unsafe impl<T: Send> Send for LinkedList<T> {}
-unsafe impl<T: Sync> Sync for LinkedList<T> {}
-unsafe impl<T: Sync> Send for Iter<'_, T> {}
-unsafe impl<T: Sync> Sync for Iter<'_, T> {}
-unsafe impl<T: Send> Send for IterMut<'_, T> {}
-unsafe impl<T: Sync> Sync for IterMut<'_, T> {}
+unsafe impl Send for LinkedList {}
+unsafe impl Sync for LinkedList {}
+unsafe impl<'a> Send for Iter<'a> {}
+unsafe impl<'a> Sync for Iter<'a> {}
+unsafe impl<'a> Send for IterMut<'a> {}
+unsafe impl<'a> Sync for IterMut<'a> {}
