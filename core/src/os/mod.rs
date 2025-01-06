@@ -26,7 +26,7 @@ mod occlum;
 pub use self::occlum::{
     spawn, Aead, AeadIv, AeadKey, AeadMac, Arc, BTreeMap, Box, Condvar, CurrentThread, CvarMutex,
     HashMap, HashSet, JoinHandle, Mutex, MutexGuard, Pages, Rng, RwLock, RwLockReadGuard,
-    RwLockWriteGuard, Skcipher, SkcipherIv, SkcipherKey, String, Tid, ToString, Vec, Weak,
+    RwLockWriteGuard, SeekFrom, Skcipher, SkcipherIv, SkcipherKey, String, Tid, ToString, Vec, Weak,
     PAGE_SIZE,
 };
 
