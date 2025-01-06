@@ -4,7 +4,7 @@
 //! Write/read amount, concurrency and I/O buffer size are configurable.
 //! Provides a baseline named `EncDisk`, which simply protects data using authenticated encryption.
 //! Results are displayed as throughput in MiB/sec.
-use sworndisk_v2::*;
+use atomic_disk::*;
 
 use self::benches::{Bench, BenchBuilder, IoPattern, IoType};
 use self::consts::*;

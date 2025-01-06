@@ -1,5 +1,5 @@
 [package]
-name = "sworndisk-v2"
+name = "atomic-disk"
 version = "0.1.0"
 edition = "2021"
 
