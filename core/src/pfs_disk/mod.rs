@@ -235,32 +235,6 @@ impl<D: BlockSet> PfsDisk<D> {
     }
 }
 
-// impl BlockDevice for PfsDisk {
-//     fn total_blocks(&self) -> usize {
-//         self.total_blocks
-//     }
-
-//     fn submit(&self, req: Arc<BioReq>) -> BioSubmission {
-//         // Update the status of req to submittted
-//         let submission = BioSubmission::new(req);
-
-//         let req = submission.req();
-//         let type_ = req.type_();
-//         let res = match type_ {
-//             BioType::Read => self.do_read(req),
-//             BioType::Write => self.do_write(req),
-//             BioType::Flush => self.do_flush(),
-//         };
-
-//         // Update the status of req to completed and set the response
-//         let resp = res.map_err(|e| e.errno());
-//         unsafe {
-//             req.complete(resp);
-//         }
-
-//         submission
-//     }
-
 impl<D: BlockSet> Drop for PfsDisk<D> {
     fn drop(&mut self) {
         let mut file = self.file.lock();
@@ -276,6 +250,73 @@ impl<D: BlockSet> fmt::Debug for PfsDisk<D> {
             .field("path", &self.path)
             .field("total_blocks", &self.total_blocks)
             .finish()
+    }
+}
+
+
+#[cfg(feature = "occlum")]
+mod impl_block_device {
+    use super::{BlockSet, BufMut, BufRef, PfsDisk, Vec};
+    use ext2_rs::{Bid, BlockDevice, FsError as Ext2Error};
+
+    impl<D: BlockSet + 'static> BlockDevice for PfsDisk<D> {
+        fn total_blocks(&self) -> usize {
+            self.total_blocks()
+        }
+
+        fn read_blocks(&self, bid: Bid, blocks: &mut [&mut [u8]]) -> Result<(), Ext2Error> {
+            if blocks.len() == 1 {
+                self.read(
+                    bid as _,
+                    BufMut::try_from(blocks.first_mut().unwrap().as_mut()).unwrap(),
+                )?;
+                return Ok(());
+            }
+
+            let mut bufs = blocks
+                .iter_mut()
+                .map(|block| BufMut::try_from(block.as_mut()).unwrap())
+                .collect::<Vec<_>>();
+            self.readv(bid as _, &mut bufs)?;
+            Ok(())
+        }
+
+        fn write_blocks(&self, bid: Bid, blocks: &[&[u8]]) -> Result<(), Ext2Error> {
+            if blocks.len() == 1 {
+                self.write(
+                    bid as _,
+                    BufRef::try_from(blocks.first().unwrap().as_ref()).unwrap(),
+                )?;
+                return Ok(());
+            }
+
+            let bufs = blocks
+                .iter()
+                .map(|block| BufRef::try_from(block.as_ref()).unwrap())
+                .collect::<Vec<_>>();
+            self.writev(bid as _, &bufs)?;
+            Ok(())
+        }
+
+        fn sync(&self) -> Result<(), Ext2Error> {
+            self.sync()?;
+            Ok(())
+        }
+    }
+
+    impl From<crate::Error> for Ext2Error {
+        fn from(value: crate::Error) -> Self {
+            match value.errno() {
+                crate::Errno::NotFound => Self::EntryNotFound,
+                crate::Errno::InvalidArgs => Self::InvalidParam,
+                crate::Errno::OutOfDisk => Self::NoDeviceSpace,
+                crate::Errno::PermissionDenied => Self::PermError,
+                _ => {
+                    log::error!("[SwornDisk] Error occurred: {value:?}");
+                    Self::DeviceError(0)
+                }
+            }
+        }
     }
 }
 

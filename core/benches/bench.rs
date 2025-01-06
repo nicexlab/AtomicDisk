@@ -30,7 +30,7 @@ fn init_logger() {
 
 fn main() {
    init_logger();
-    let total_bytes = 1 * GiB;
+    let total_bytes = 2 * GiB;
     // Specify all benchmarks
     let benches = vec![
 
@@ -77,7 +77,7 @@ fn main() {
             .io_type(IoType::Read)
             .io_pattern(IoPattern::Seq)
             .total_bytes(total_bytes)
-            .buf_size(4 * KiB)
+            .buf_size(256 * KiB)
             .concurrency(1)
             .build()
             .unwrap(),
@@ -461,8 +461,8 @@ mod disks {
     impl FileAsDisk {
         pub fn create(nblocks: usize, path: &str) -> Self {
             unsafe {
-                // let oflag = O_RDWR | O_CREAT | O_TRUNC;
-                let oflag = O_RDWR | O_CREAT | O_TRUNC | O_DIRECT;
+                let oflag = O_RDWR | O_CREAT | O_TRUNC;
+                // let oflag = O_RDWR | O_CREAT | O_TRUNC | O_DIRECT;
                 let fd = open(CString::new(path).unwrap().as_ptr() as _, oflag, 0o666);
                 if fd == -1 {
                     println!("open error: {}", std::io::Error::last_os_error());
