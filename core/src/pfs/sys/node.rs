@@ -18,9 +18,8 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
 use pod::Pod;
-use crate::layers::crypto::Iv;
 use crate::pfs::sys::cache::NodeRef;
-use crate::{prelude::*, Errno};
+use crate::{prelude::*, AeadIv, Errno};
 use crate::pfs::sys::keys::{DeriveKey, KeyType};
 use crate::pfs::sys::metadata::EncryptFlags;
 use crate::util::Aead as _;
@@ -257,7 +256,7 @@ impl FileNode {
 
         // TODO: support integrity only
 
-        let iv = Iv::new_zeroed();
+        let iv = AeadIv::new_zeroed();
         let mac = Aead::new()
             .encrypt(
                 self.plaintext.as_ref(),
@@ -288,7 +287,7 @@ impl FileNode {
             .decrypt(
                 self.ciphertext.node_data.as_ref(),
                 key,
-                &Iv::new_zeroed(),
+                &AeadIv::new_zeroed(),
                 &[],
                 mac,
                 self.plaintext.as_mut(),

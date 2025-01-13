@@ -30,7 +30,7 @@ fn init_logger() {
 
 fn main() {
    init_logger();
-    let total_bytes = 2 * GiB;
+    let total_bytes = 5 * GiB;
     // Specify all benchmarks
     let benches = vec![
 
@@ -283,18 +283,9 @@ mod benches {
             static DISK_ID: AtomicU32 = AtomicU32::new(0);
 
             let disk: Arc<dyn BenchDisk> = match disk_type {
-                DiskType::SwornDisk => Arc::new(SwornDisk::create(
-                    FileAsDisk::create(
-                        total_nblocks * 5 / 4, // TBD
-                        &format!(
-                            "sworndisk-{}.image",
-                            DISK_ID.fetch_add(1, Ordering::Release)
-                        ),
-                    ),
-                    AeadKey::default(),
-                    None,
-                )?),
-
+                DiskType::SwornDisk => {
+                    unreachable!()
+                }
                 DiskType::EncDisk => Arc::new(EncDisk::create(
                     total_nblocks,
                     &format!("encdisk-{}.image", DISK_ID.fetch_add(1, Ordering::Release)),
@@ -462,7 +453,7 @@ mod disks {
         pub fn create(nblocks: usize, path: &str) -> Self {
             unsafe {
                 let oflag = O_RDWR | O_CREAT | O_TRUNC;
-                // let oflag = O_RDWR | O_CREAT | O_TRUNC | O_DIRECT;
+                //let oflag = O_RDWR | O_CREAT | O_TRUNC | O_DIRECT;
                 let fd = open(CString::new(path).unwrap().as_ptr() as _, oflag, 0o666);
                 if fd == -1 {
                     println!("open error: {}", std::io::Error::last_os_error());
@@ -560,50 +551,6 @@ mod disks {
             unsafe {
                 unlink(self.path.as_ptr() as _);
             }
-        }
-    }
-
-    impl BenchDisk for SwornDisk<FileAsDisk> {
-        fn read_seq(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
-            let mut buf = Buf::alloc(buf_nblocks)?;
-
-            for i in 0..total_nblocks / buf_nblocks {
-                self.read(pos + i * buf_nblocks, buf.as_mut())?;
-            }
-
-            Ok(())
-        }
-
-        fn write_seq(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
-            let buf = Buf::alloc(buf_nblocks)?;
-
-            for i in 0..total_nblocks / buf_nblocks {
-                self.write(pos + i * buf_nblocks, buf.as_ref())?;
-            }
-
-            self.sync()
-        }
-
-        fn read_rnd(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
-            let mut buf = Buf::alloc(buf_nblocks)?;
-
-            for _ in 0..total_nblocks / buf_nblocks {
-                let rnd_pos = gen_rnd_pos(total_nblocks, buf_nblocks);
-                self.read(pos + rnd_pos, buf.as_mut())?;
-            }
-
-            Ok(())
-        }
-
-        fn write_rnd(&self, pos: BlockId, total_nblocks: usize, buf_nblocks: usize) -> Result<()> {
-            let buf = Buf::alloc(buf_nblocks)?;
-
-            for _ in 0..total_nblocks / buf_nblocks {
-                let rnd_pos = gen_rnd_pos(total_nblocks, buf_nblocks);
-                self.write(pos + rnd_pos, buf.as_ref())?;
-            }
-
-            self.sync()
         }
     }
 

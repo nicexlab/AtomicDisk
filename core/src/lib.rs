@@ -27,13 +27,13 @@
 )]
 
 mod error;
-mod layers;
 mod os;
 mod pfs;
 mod pfs_disk;
 mod prelude;
 mod tx;
 mod util;
+mod bio;
 
 #[cfg(not(feature = "occlum"))]
 extern crate alloc;
@@ -46,8 +46,7 @@ pub use self::os::{Arc, Mutex, Vec};
 extern crate sgx_tstd;
 
 pub use self::error::{Errno, Error};
-pub use self::layers::bio::{BlockId, BlockSet, Buf, BufMut, BufRef, BLOCK_SIZE};
-pub use self::layers::disk::SwornDisk;
+pub use self::bio::{BlockId, BlockSet, Buf, BufMut, BufRef, BLOCK_SIZE};
 pub use self::os::{Aead, AeadIv, AeadKey, AeadMac, Rng};
 pub use self::pfs_disk::PfsDisk;
 pub use self::util::{Aead as _, RandomInit, Rng as _};

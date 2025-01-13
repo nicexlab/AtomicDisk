@@ -1,4 +1,4 @@
-use super::{Buf, BufMut, BufRef};
+use crate::bio::block_buf::{Buf, BufMut, BufRef};
 use crate::error::Errno;
 use crate::os::Mutex;
 use crate::prelude::*;
@@ -198,7 +198,7 @@ impl BlockSet for MemDisk {
 
 #[cfg(test)]
 mod tests {
-    use crate::layers::bio::{BlockSet, Buf, MemDisk};
+    use crate::bio::{block_buf::Buf, block_set::{BlockSet, MemDisk}};
     use core::ops::Range;
 
     #[test]

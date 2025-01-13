@@ -15,9 +15,8 @@
 // specific language governing permissions and limitations
 // under the License..
 
-use crate::layers::crypto::Iv;
 use crate::pfs::sgx::{Attributes, CpuSvn, KeyId, KeyPolicy};
-use crate::{prelude::*, Errno};
+use crate::{prelude::*, AeadIv, Errno};
 use crate::pfs::sys::file::OpenMode;
 use crate::pfs::sys::host::HostFs;
 use crate::pfs::sys::keys::{DeriveKey, KeyType, RestoreKey};
@@ -252,7 +251,7 @@ impl MetadataInfo {
             .encrypt(
                 self.encrypted_plain.as_ref(),
                 key,
-                &Iv::new_zeroed(),
+                &AeadIv::new_zeroed(),
                 &[],
                 self.node.metadata.ciphertext.as_mut(),
             )
@@ -270,7 +269,7 @@ impl MetadataInfo {
             .decrypt(
                 self.node.metadata.ciphertext.as_ref(),
                 &key,
-                &Iv::new_zeroed(),
+                &AeadIv::new_zeroed(),
                 &[],
                 &self.node.metadata.plaintext.gmac,
                 self.encrypted_plain.as_mut(),

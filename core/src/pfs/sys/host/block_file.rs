@@ -1,7 +1,6 @@
 use super::HostFs;
 use crate::{
     bail, ensure,
-    layers::{bio::BlockLog, log::raw_log::RawLog},
     pfs::sys::node::NODE_SIZE,
     BlockId, BlockSet, BufMut, BufRef, Errno, Error,
 };
@@ -75,12 +74,12 @@ impl<D: BlockSet> HostFs for BlockFile<D> {
     }
 }
 
-pub struct RecoveryFile<D> {
-    log: RawLog<D>,
-}
+// pub struct RecoveryFile<D> {
+//     log: RawLog<D>,
+// }
 
-impl<D: BlockSet> RecoveryFile<D> {
-    pub fn new(log: RawLog<D>) -> Self {
-        Self { log }
-    }
-}
+// impl<D: BlockSet> RecoveryFile<D> {
+//     pub fn new(log: RawLog<D>) -> Self {
+//         Self { log }
+//     }
+// }

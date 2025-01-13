@@ -16,7 +16,7 @@
 // under the License..
 use crate::bail;
 use crate::ensure;
-use crate::layers::bio::MemDisk;
+use crate::bio::MemDisk;
 use crate::os::HashMap;
 use crate::os::SeekFrom;
 use crate::os::{Arc, Mutex};

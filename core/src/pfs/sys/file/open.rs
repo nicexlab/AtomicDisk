@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License..
 
-use crate::layers::bio::MemDisk;
+use crate::bio::MemDisk;
 use crate::os::Arc;
 use crate::os::HashMap;
 use crate::pfs::sys::cache::LruCache;

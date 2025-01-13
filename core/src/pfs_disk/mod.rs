@@ -1,9 +1,9 @@
 pub use self::open_options::OpenOptions;
-use crate::layers::disk::bio::{BioReq, BioType};
+use crate::bio::bio_req::{BioReq, BioType};
 use crate::os::Mutex;
 use crate::os::SeekFrom;
 use crate::pfs::fs::SgxFile as PfsFile;
-use crate::{prelude::*, BlockSet, BufMut};
+use crate::{prelude::*, BlockSet, Buf, BufMut};
 use crate::{BufRef, Errno};
 use crate::os::{Aead, AeadIv as Iv, AeadKey as Key, AeadMac as Mac};
 mod open_options;
@@ -110,15 +110,16 @@ impl<D: BlockSet> PfsDisk<D> {
     pub fn readv<'a>(&self,addr: usize, bufs: &'a mut [BufMut<'a>]) -> Result<()> {
         let mut buf_vec = BufMutVec::from_bufs(bufs);
         let nblocks = buf_vec.nblocks();
+        let mut buf = Buf::alloc(nblocks)?;
+        let mut file = self.file.lock();
+
+        let offset = addr * BLOCK_SIZE + PFS_INNER_OFFSET;
+        file.seek(SeekFrom::Start(offset as u64)).unwrap();
+        file.read(buf.as_mut_slice()).unwrap();
 
         for i in 0..nblocks {
-            let buf = buf_vec.nth_buf_mut_slice(i);
-            self.validate_range(addr)?;
-
-            let offset = (addr + i) * BLOCK_SIZE + PFS_INNER_OFFSET;
-            let mut file = self.file.lock();
-            file.seek(SeekFrom::Start(offset as u64)).unwrap();
-            file.read(buf).unwrap();
+            let plain_buf = buf_vec.nth_buf_mut_slice(i);
+            plain_buf.copy_from_slice(&buf.as_slice()[i * BLOCK_SIZE..(i + 1) * BLOCK_SIZE]);
         }
         Ok(())
     }
@@ -135,11 +136,16 @@ impl<D: BlockSet> PfsDisk<D> {
         Ok(())
     }
 
-    pub fn writev(&self, mut addr: usize, bufs: &[BufRef]) -> Result<()> {
-        for buf in bufs {
-            self.write(addr, *buf)?;
-            addr += buf.nblocks();
+    pub fn writev(&self, addr: usize, bufs: &[BufRef]) -> Result<()> {
+
+        let n_block = bufs.len();
+        let mut buf = Buf::alloc(n_block)?;
+
+        for (i, block) in bufs.iter().enumerate() {
+            let plain_buf = &mut buf.as_mut_slice()[i * BLOCK_SIZE..(i + 1) * BLOCK_SIZE];
+            plain_buf.copy_from_slice(block.as_slice());
         }
+        self.write(addr, buf.as_ref())?;
         Ok(())
     }
 
@@ -319,13 +325,7 @@ mod impl_block_device {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        layers::{
-            bio::MemDisk,
-            disk::bio::{BioReqBuilder, BlockBuf},
-        },
-        Buf,
-    };
+    use crate::bio::{block_buf::Buf, block_set::MemDisk};
     use core::ptr::NonNull;
     use std::sync::Once;
     static INIT_LOG: Once = Once::new();

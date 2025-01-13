@@ -1,4 +1,6 @@
-use super::{BlockLog, BlockSet, BufMut, BufRef};
+use crate::bio::block_log::BlockLog;
+use crate::bio::block_set::BlockSet;
+use crate::bio::block_buf::{Buf, BufMut, BufRef};
 use crate::os::Mutex;
 use crate::prelude::*;
 
@@ -88,7 +90,7 @@ impl<S: BlockSet> BlockLog for BlockRing<S> {
 #[cfg(test)]
 mod tests {
     use super::BlockRing;
-    use crate::layers::bio::{BlockLog, Buf, MemDisk};
+    use crate::bio::{block_buf::Buf, block_log::BlockLog, block_set::{BlockSet, MemDisk}};
 
     #[test]
     fn block_ring() {

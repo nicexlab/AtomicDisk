@@ -3,7 +3,6 @@ use crate::os::Arc;
 use crate::os::HashMap;
 use crate::{
     bail, ensure,
-    layers::disk,
     pfs::sys::{
         host::{RecoveryHandler, RECOVERY_NODE_SIZE},
         node::{EncryptedData, FileNode, NodeType, NODE_SIZE},
@@ -237,7 +236,7 @@ pub fn recovery<D: BlockSet>(
 
 mod tests {
     use crate::{
-        layers::bio::{MemDisk, BID_SIZE},
+        bio::MemDisk,
         pfs::sys::{
             host::{
                 block_file::BlockFile,
