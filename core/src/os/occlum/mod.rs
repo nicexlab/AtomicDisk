@@ -24,6 +24,7 @@ pub use sgx_tstd::string::{String, ToString};
 pub use sgx_tstd::sync::{Arc, Weak};
 pub use sgx_tstd::thread::{spawn, JoinHandle};
 pub use sgx_tstd::vec::Vec;
+pub use sgx_tstd::sync::{SgxCondvar as Condvar, SgxMutex as CvarMutex};
 
 /// Unique ID for the OS thread.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
