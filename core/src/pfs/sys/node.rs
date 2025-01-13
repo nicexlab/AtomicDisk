@@ -257,18 +257,7 @@ impl FileNode {
             None
         };
 
-        // let mac = if !self.encrypt_flags.is_integrity_only() {
-        //     let mut aes = AesGcm::new(key, Nonce::zeroed(), Aad::empty())?;
-        //     aes.encrypt(self.plaintext.as_ref(), self.ciphertext.node_data.as_mut())?
-        // } else {
-        //     let mut aes = AesGcm::new(key, Nonce::zeroed(), Aad::from(&self.plaintext))?;
-        //     let mac = aes.mac()?;
-        //     self.ciphertext
-        //         .node_data
-        //         .as_mut()
-        //         .copy_from_slice(self.plaintext.as_ref());
-        //     mac
-        // };
+        // TODO: support integrity only
 
         let iv = Iv::new_zeroed();
         let mac = Aead::new()
@@ -296,21 +285,7 @@ impl FileNode {
     }
 
     pub fn decrypt(&mut self, key: &AeadKey, mac: &AeadMac) -> FsResult {
-        // if !self.encrypt_flags.is_integrity_only() {
-        //     let mut aes = AesGcm::new(key, Nonce::zeroed(), Aad::empty())?;
-        //     aes.decrypt(
-        //         self.ciphertext.node_data.as_ref(),
-        //         self.plaintext.as_mut(),
-        //         mac,
-        //     )?
-        // } else {
-        //     let mut aes = AesGcm::new(key, Nonce::zeroed(), Aad::from(&self.ciphertext.node_data))?;
-        //     aes.verify_mac(mac)?;
-        //     self.plaintext
-        //         .as_mut()
-        //         .copy_from_slice(self.ciphertext.node_data.as_ref());
-        // };
-
+        // TODO: support integrity only
         Aead::new()
             .decrypt(
                 self.ciphertext.node_data.as_ref(),

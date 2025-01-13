@@ -222,31 +222,6 @@ impl<D: BlockSet> ProtectedFile<D> {
         file.rollback_nodes(rollback_nodes)
     }
 
-    #[cfg(feature = "tfs")]
-    pub fn export_key<P: AsRef<Path>>(path: P) -> FsResult<Key128bit> {
-        let mut file = FileInner::open(
-            path.as_ref(),
-            &OpenOptions::new().read(true),
-            &OpenMode::ExportKey,
-            None,
-        )?;
-        file.close(CloseMode::Export).map(|key| key.unwrap())
-    }
-
-    #[cfg(feature = "tfs")]
-    pub fn import_key<P: AsRef<Path>>(
-        path: P,
-        key: Key128bit,
-        key_policy: Option<KeyPolicy>,
-    ) -> FsResult {
-        let mut file = FileInner::open(
-            path.as_ref(),
-            &OpenOptions::new().read(true).update(true),
-            &OpenMode::ImportKey((key, key_policy.unwrap_or(KeyPolicy::MRSIGNER))),
-            None,
-        )?;
-        file.close(CloseMode::Import).map(|_| ())
-    }
 }
 
 #[allow(dead_code)]

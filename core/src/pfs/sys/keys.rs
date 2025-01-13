@@ -110,11 +110,6 @@ impl Drop for MasterKey {
 #[derive(Clone, Debug)]
 pub enum MetadataKey {
     UserKey(AeadKey),
-    #[cfg(feature = "tfs")]
-    AutoKey {
-        report: Box<Report>,
-        key_policy: Option<KeyPolicy>,
-    },
 }
 
 impl MetadataKey {
@@ -123,16 +118,8 @@ impl MetadataKey {
         if let Some(user_key) = user_key {
             Ok(Self::UserKey(user_key))
         } else {
-            cfg_if! {
-                if #[cfg(feature = "tfs")] {
-                    Ok(Self::AutoKey {
-                        report: Box::new(*Report::get_self()),
-                        key_policy,
-                    })
-                } else {
-                    Err(eos!(ENOTSUP))
-                }
-            }
+            // TODO: support auto key
+            unreachable!()
         }
     }
 }
@@ -140,34 +127,8 @@ impl MetadataKey {
 impl DeriveKey for MetadataKey {
     fn derive_key(&mut self, key_type: KeyType, _node_number: u64) -> FsResult<(AeadKey, KeyId)> {
         ensure!(key_type == KeyType::Metadata, eos!(EINVAL));
-
         match self {
             Self::UserKey(ref user_key) => KdfInput::derive_key(user_key, KeyType::Metadata, 0),
-            #[cfg(feature = "tfs")]
-            Self::AutoKey {
-                ref report,
-                ref key_policy,
-            } => {
-                let mut rng = RdRand::new().map_err(|_| ENOTSUP)?;
-                let mut key_id = KeyId::default();
-                rng.fill_bytes(key_id.as_mut());
-
-                let key_request = KeyRequest {
-                    key_name: KeyName::Seal,
-                    key_policy: key_policy.unwrap_or(KeyPolicy::MRSIGNER),
-                    isv_svn: report.body.isv_svn,
-                    cpu_svn: report.body.cpu_svn,
-                    attribute_mask: Attributes {
-                        flags: AttributesFlags::DEFAULT_MASK,
-                        xfrm: 0,
-                    },
-                    key_id,
-                    misc_mask: TSEAL_DEFAULT_MISCMASK,
-                    ..Default::default()
-                };
-                let key = key_request.get_key()?;
-                Ok((key, key_id))
-            }
         }
     }
 }
@@ -183,32 +144,8 @@ impl RestoreKey for MetadataKey {
         isv_svn: Option<u16>,
     ) -> FsResult<AeadKey> {
         ensure!(key_type == KeyType::Metadata, eos!(EINVAL));
-
         match self {
-            Self::UserKey(ref user_key) => {
-                KdfInput::restore_key(user_key, KeyType::Metadata, 0, key_id)
-            }
-            #[cfg(feature = "tfs")]
-            Self::AutoKey { .. } => {
-                let cpu_svn = cpu_svn.ok_or(EINVAL)?;
-                let isv_svn = isv_svn.ok_or(EINVAL)?;
-
-                let key_request = KeyRequest {
-                    key_name: KeyName::Seal,
-                    key_policy: key_policy.unwrap_or(KeyPolicy::MRSIGNER),
-                    isv_svn,
-                    cpu_svn,
-                    attribute_mask: Attributes {
-                        flags: AttributesFlags::DEFAULT_MASK,
-                        xfrm: 0,
-                    },
-                    key_id,
-                    misc_mask: TSEAL_DEFAULT_MISCMASK,
-                    ..Default::default()
-                };
-                let key = key_request.get_key()?;
-                Ok(key)
-            }
+            Self::UserKey(ref user_key) => KdfInput::restore_key(user_key, KeyType::Metadata, 0, key_id),
         }
     }
 }
@@ -217,8 +154,6 @@ impl Drop for MetadataKey {
     fn drop(&mut self) {
         match self {
             Self::UserKey(ref mut key) => key.fill(0),
-            #[cfg(feature = "tfs")]
-            Self::AutoKey { .. } => {}
         }
     }
 }

@@ -24,14 +24,6 @@ use crate::pfs::sys as fs_imp;
 use crate::prelude::Result;
 use crate::{AeadKey, AeadMac, BlockSet};
 
-// cfg_if! {
-//     if #[cfg(feature = "tfs")] {
-//         use sgx_rsrvmm::map::Map;
-//         use sgx_types::error::errno::ESGX;
-//         use sgx_types::error::OsResult;
-//         use sgx_types::types::KeyPolicy;
-//     }
-// }
 
 /// Options and flags which can be used to configure how a file is opened.
 ///
@@ -60,72 +52,6 @@ pub struct SgxFile<D> {
 unsafe impl<D: BlockSet> Send for SgxFile<D> {}
 unsafe impl<D: BlockSet> Sync for SgxFile<D> {}
 
-/// Read the entire contents of a file into a bytes vector.
-
-// pub fn read<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
-//     let mut file = SgxFile::open(path)?;
-//     let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
-//     file.read_to_end(&mut bytes)?;
-//     Ok(bytes)
-// }
-
-// /// Read the entire contents of a file into a string.
-
-// pub fn read_to_string<P: AsRef<Path>>(path: P) -> io::Result<String> {
-//     let mut file = SgxFile::open(path)?;
-//     let mut string = String::with_capacity(buffer_capacity_required(&file));
-//     file.read_to_string(&mut string)?;
-//     Ok(string)
-// }
-
-// /// Write a slice as the entire contents of a file.
-
-// pub fn write<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> io::Result<()> {
-//     SgxFile::create(path)?.write_all(contents.as_ref())
-// }
-
-// pub fn read_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<Vec<u8>> {
-//     let mut file = SgxFile::open_with_key(path, key)?;
-//     let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
-//     file.read_to_end(&mut bytes)?;
-//     Ok(bytes)
-// }
-
-// pub fn read_to_string_with_key<P: AsRef<Path>>(path: P, key: AeadKey) -> io::Result<String> {
-//     let mut file = SgxFile::open_with_key(path, key)?;
-//     let mut string = String::with_capacity(buffer_capacity_required(&file));
-//     file.read_to_string(&mut string)?;
-//     Ok(string)
-// }
-
-// pub fn write_with_key<P: AsRef<Path>, C: AsRef<[u8]>>(
-//     path: P,
-//     key: AeadKey,
-//     contents: C,
-// ) -> io::Result<()> {
-//     SgxFile::create_with_key(path, key)?.write_all(contents.as_ref())
-// }
-
-// pub fn read_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<Vec<u8>> {
-//     let mut file = SgxFile::open_integrity_only(path)?;
-//     let mut bytes = Vec::with_capacity(buffer_capacity_required(&file));
-//     file.read_to_end(&mut bytes)?;
-//     Ok(bytes)
-// }
-
-// pub fn read_to_string_integrity_only<P: AsRef<Path>>(path: P) -> io::Result<String> {
-//     let mut file = SgxFile::open_integrity_only(path)?;
-//     let mut string = String::with_capacity(buffer_capacity_required(&file));
-//     file.read_to_string(&mut string)?;
-//     Ok(string)
-// }
-
-// pub fn write_integrity_only<P: AsRef<Path>, C: AsRef<[u8]>>(
-//     path: P,
-//     contents: C,
-// ) -> io::Result<()> {
-//     SgxFile::create_integrity_only(path)?.write_all(contents.as_ref())
-// }
 
 impl<D: BlockSet> SgxFile<D> {
     //#[cfg(feature = "tfs")]
@@ -278,43 +204,6 @@ fn buffer_capacity_required<D: BlockSet>(file: &SgxFile<D>) -> usize {
     size.saturating_sub(pos) as usize
 }
 
-#[cfg(feature = "tfs")]
-impl<D: BlockSet> Map for SgxFile<D> {
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> OsResult<usize> {
-        self.inner
-            .read_at(buf, offset as u64)
-            .map_err(|e| e.raw_os_error().unwrap_or(ESGX))
-    }
-    fn write_at(&self, buf: &[u8], offset: usize) -> OsResult<usize> {
-        self.inner
-            .write_at(buf, offset as u64)
-            .map_err(|e| e.raw_os_error().unwrap_or(ESGX))
-    }
-    #[inline]
-    fn flush(&self) -> OsResult {
-        self.inner
-            .flush()
-            .map_err(|e| e.raw_os_error().unwrap_or(ESGX))
-    }
-}
-
-// pub fn remove<P: AsRef<Path>>(path: P) -> io::Result<()> {
-//     fs_imp::remove(path.as_ref())
-// }
-
-#[cfg(feature = "tfs")]
-pub fn export_key<P: AsRef<Path>>(path: P) -> io::Result<Key128bit> {
-    fs_imp::export_key(path.as_ref())
-}
-
-#[cfg(feature = "tfs")]
-pub fn import_key<P: AsRef<Path>>(
-    path: P,
-    key: Key128bit,
-    key_policy: Option<KeyPolicy>,
-) -> io::Result<()> {
-    fs_imp::import_key(path.as_ref(), key, key_policy)
-}
 
 impl OpenOptions {
     /// Creates a blank new set of options ready for configuration.

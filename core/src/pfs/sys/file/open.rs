@@ -258,46 +258,14 @@ impl<D: BlockSet> FileInner<D> {
         host_file: &mut BlockFile<D>,
         journal: &mut RecoveryJournal<D>,
     ) -> FsResult<HashMap<u64, Arc<RefCell<FileNode>>>> {
-        // let file_size = host_file.size()?;
-        // let n_blocks = file_size / NODE_SIZE;
 
-        // recovery file does not exist,all committed nodes are persisted on disk and all uncommitted nodes are discarded
-        // if !Self::files_exist(recovery_path)? {
-        //     return Ok((
-        //         BlockFile::create(MemDisk::create(n_blocks)?),
-        //         HashMap::new(),
-        //     ));
-        // }
         // TODO check recovery file size
 
         let roll_back_nodes = host::journal::recovery(host_file, journal)?;
-        // ensure!(
-        //     host_file.size() == file_size,
-        //     FsError::SgxError(SgxStatus::Unexpected)
-        // );
+
         Ok(roll_back_nodes)
     }
 
-    fn files_exist(_path: &str) -> FsResult<bool> {
-        unreachable!()
-        // host::raw_file::try_exists(path)
-    }
-
-    fn check_file_exist(_opts: &OpenOptions, _mode: &OpenMode, _path: &str) -> FsResult {
-        unreachable!()
-        // let is_exist = host::raw_file::try_exists(path)?;
-
-        // if opts.read || mode.import_key().is_some() {
-        //     ensure!(is_exist, eos!(ENOENT));
-        // }
-        // if opts.write && is_exist {
-        //     // try to delete existing file
-        //     host::raw_file::remove(path)?;
-        //     // re-check
-        //     let is_exist = host::raw_file::try_exists(path)?;
-        //     ensure!(!is_exist, eos!(EACCES));
-        // }
-    }
 
     #[inline]
     fn check_open_param(path: &str, name: &str, opts: &OpenOptions, mode: &OpenMode) -> FsResult {
