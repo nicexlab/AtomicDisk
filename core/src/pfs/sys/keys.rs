@@ -16,15 +16,13 @@
 // under the License..
 
 use crate::pfs::sgx::{ContiguousMemory, CpuSvn, KeyId, KeyPolicy};
-use crate::pfs::sys::error::{FsResult, EINVAL};
 use crate::pfs::sys::file::OpenMode;
 use crate::util::Rng as _;
-use crate::{bail, cfg_if, ensure, eos, impl_struct_default, AeadKey, Rng};
-
-use super::error::ENOTSUP;
+use crate::{bail, cfg_if, ensure, impl_struct_default, AeadKey, Errno, Rng};
+use crate::prelude::*;
 
 pub trait DeriveKey {
-    fn derive_key(&mut self, key_type: KeyType, node_number: u64) -> FsResult<(AeadKey, KeyId)>;
+    fn derive_key(&mut self, key_type: KeyType, node_number: u64) -> Result<(AeadKey, KeyId)>;
 }
 
 pub trait RestoreKey {
@@ -35,7 +33,7 @@ pub trait RestoreKey {
         key_policy: Option<KeyPolicy>,
         cpu_svn: Option<CpuSvn>,
         isv_svn: Option<u16>,
-    ) -> FsResult<AeadKey>;
+    ) -> Result<AeadKey>;
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -53,7 +51,7 @@ pub struct MasterKey {
 }
 
 impl MasterKey {
-    fn new() -> FsResult<MasterKey> {
+    fn new() -> Result<MasterKey> {
         let (key, key_id) = KdfInput::derive_key(&AeadKey::default(), KeyType::Master, 0)?;
         Ok(MasterKey {
             key,
@@ -62,7 +60,7 @@ impl MasterKey {
         })
     }
 
-    fn update(&mut self) -> FsResult<(AeadKey, KeyId)> {
+    fn update(&mut self) -> Result<(AeadKey, KeyId)> {
         const MAX_USAGES: u32 = 65536;
 
         if self.count >= MAX_USAGES {
@@ -75,14 +73,14 @@ impl MasterKey {
 }
 
 impl DeriveKey for MasterKey {
-    fn derive_key(&mut self, key_type: KeyType, node_number: u64) -> FsResult<(AeadKey, KeyId)> {
+    fn derive_key(&mut self, key_type: KeyType, node_number: u64) -> Result<(AeadKey, KeyId)> {
         match key_type {
             KeyType::Master => self.update(),
             KeyType::Random => {
                 let (key, _) = self.update()?;
                 KdfInput::derive_key(&key, KeyType::Random, node_number)
             }
-            _ => Err(eos!(ENOTSUP)),
+            _ => return_errno!(Errno::Unsupported),
         }
     }
 }
@@ -95,8 +93,8 @@ impl RestoreKey for MasterKey {
         _key_policy: Option<KeyPolicy>,
         _cpu_svn: Option<CpuSvn>,
         _isv_svn: Option<u16>,
-    ) -> FsResult<AeadKey> {
-        Err(eos!(ENOTSUP))
+    ) -> Result<AeadKey> {
+        return_errno!(Errno::Unsupported)
     }
 }
 
@@ -114,7 +112,7 @@ pub enum MetadataKey {
 
 impl MetadataKey {
     #[allow(unused_variables)]
-    fn new(user_key: Option<AeadKey>, key_policy: Option<KeyPolicy>) -> FsResult<MetadataKey> {
+    fn new(user_key: Option<AeadKey>, key_policy: Option<KeyPolicy>) -> Result<MetadataKey> {
         if let Some(user_key) = user_key {
             Ok(Self::UserKey(user_key))
         } else {
@@ -125,8 +123,8 @@ impl MetadataKey {
 }
 
 impl DeriveKey for MetadataKey {
-    fn derive_key(&mut self, key_type: KeyType, _node_number: u64) -> FsResult<(AeadKey, KeyId)> {
-        ensure!(key_type == KeyType::Metadata, eos!(EINVAL));
+    fn derive_key(&mut self, key_type: KeyType, _node_number: u64) -> Result<(AeadKey, KeyId)> {
+        ensure!(key_type == KeyType::Metadata, Error::new(Errno::InvalidArgs));
         match self {
             Self::UserKey(ref user_key) => KdfInput::derive_key(user_key, KeyType::Metadata, 0),
         }
@@ -142,8 +140,8 @@ impl RestoreKey for MetadataKey {
         key_policy: Option<KeyPolicy>,
         cpu_svn: Option<CpuSvn>,
         isv_svn: Option<u16>,
-    ) -> FsResult<AeadKey> {
-        ensure!(key_type == KeyType::Metadata, eos!(EINVAL));
+    ) -> Result<AeadKey> {
+        ensure!(key_type == KeyType::Metadata, Error::new(Errno::InvalidArgs));
         match self {
             Self::UserKey(ref user_key) => KdfInput::restore_key(user_key, KeyType::Metadata, 0, key_id),
         }
@@ -185,7 +183,7 @@ impl KdfInput {
         key: &AeadKey,
         key_type: KeyType,
         node_number: u64,
-    ) -> FsResult<(AeadKey, KeyId)> {
+    ) -> Result<(AeadKey, KeyId)> {
         let rng = Rng::new(&[]);
         let label = match key_type {
             KeyType::Metadata => Self::METADATA_KEY_NAME,
@@ -212,7 +210,7 @@ impl KdfInput {
         key_type: KeyType,
         node_number: u64,
         key_id: KeyId,
-    ) -> FsResult<AeadKey> {
+    ) -> Result<AeadKey> {
         let label = match key_type {
             KeyType::Metadata => Self::METADATA_KEY_NAME,
             KeyType::Master => Self::MASTER_KEY_NAME,
@@ -243,7 +241,7 @@ pub enum FsKeyGen {
 }
 
 impl FsKeyGen {
-    pub fn new(mode: &OpenMode) -> FsResult<FsKeyGen> {
+    pub fn new(mode: &OpenMode) -> Result<FsKeyGen> {
         match mode {
             OpenMode::AutoKey(key_policy) => Ok(Self::EncryptWithIntegrity(
                 MetadataKey::new(None, Some(*key_policy))?,
@@ -263,7 +261,7 @@ impl FsKeyGen {
 }
 
 impl DeriveKey for FsKeyGen {
-    fn derive_key(&mut self, key_type: KeyType, node_number: u64) -> FsResult<(AeadKey, KeyId)> {
+    fn derive_key(&mut self, key_type: KeyType, node_number: u64) -> Result<(AeadKey, KeyId)> {
         match self {
             Self::EncryptWithIntegrity(metadata_key, master_key) => match key_type {
                 KeyType::Metadata => metadata_key.derive_key(KeyType::Metadata, 0),
@@ -272,10 +270,10 @@ impl DeriveKey for FsKeyGen {
             },
             Self::IntegrityOnly => Ok((AeadKey::default(), KeyId::default())),
             Self::Import(metadata_key) => {
-                ensure!(key_type == KeyType::Metadata, eos!(EINVAL));
+                ensure!(key_type == KeyType::Metadata, Error::new(Errno::InvalidArgs));
                 metadata_key.derive_key(KeyType::Metadata, 0)
             }
-            Self::Export(_) => Err(eos!(EINVAL)),
+            Self::Export(_) => return_errno!(Errno::InvalidArgs),
         }
     }
 }
@@ -288,21 +286,21 @@ impl RestoreKey for FsKeyGen {
         key_policy: Option<KeyPolicy>,
         cpu_svn: Option<CpuSvn>,
         isv_svn: Option<u16>,
-    ) -> FsResult<AeadKey> {
+    ) -> Result<AeadKey> {
         match self {
             Self::EncryptWithIntegrity(metadata_key, _) => match key_type {
                 KeyType::Metadata => {
                     metadata_key.restore_key(key_type, key_id, key_policy, cpu_svn, isv_svn)
                 }
-                KeyType::Master | KeyType::Random => Err(eos!(EINVAL)),
+                KeyType::Master | KeyType::Random => return_errno!(Errno::InvalidArgs),
             },
             Self::IntegrityOnly => Ok(AeadKey::default()),
-            Self::Import(_) => Err(eos!(EINVAL)),
+            Self::Import(_) => return_errno!(Errno::InvalidArgs),
             Self::Export(metadata_key) => match key_type {
                 KeyType::Metadata => {
                     metadata_key.restore_key(key_type, key_id, key_policy, cpu_svn, isv_svn)
                 }
-                KeyType::Master | KeyType::Random => Err(eos!(EINVAL)),
+                KeyType::Master | KeyType::Random => return_errno!(Errno::InvalidArgs),
             },
         }
     }

@@ -18,10 +18,9 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
 use pod::Pod;
-
 use crate::layers::crypto::Iv;
 use crate::pfs::sys::cache::NodeRef;
-use crate::pfs::sys::error::FsResult;
+use crate::{prelude::*, Errno};
 use crate::pfs::sys::keys::{DeriveKey, KeyType};
 use crate::pfs::sys::metadata::EncryptFlags;
 use crate::util::Aead as _;
@@ -34,7 +33,6 @@ use core::cmp::Ordering;
 use core::mem;
 use crate::os::Arc;
 
-use super::error::SgxStatus;
 use super::host::HostFs;
 
 // the key to encrypt the data or mht, and the gmac
@@ -249,9 +247,9 @@ impl FileNode {
         Self::new_ref(NodeType::Mht, 0, ROOT_MHT_PHY_NUM, encrypt_flags)
     }
 
-    pub fn encrypt(&mut self, key: &AeadKey) -> FsResult<AeadMac> {
+    pub fn encrypt(&mut self, key: &AeadKey) -> Result<AeadMac> {
         let parent = if !self.is_root_mht() {
-            let parent = self.parent.as_ref().ok_or(SgxStatus::Unexpected)?;
+            let parent = self.parent.as_ref().ok_or(Error::new(Errno::Unexpected))?;
             Some(parent)
         } else {
             None
@@ -284,7 +282,7 @@ impl FileNode {
         Ok(mac)
     }
 
-    pub fn decrypt(&mut self, key: &AeadKey, mac: &AeadMac) -> FsResult {
+    pub fn decrypt(&mut self, key: &AeadKey, mac: &AeadMac) -> Result<()> {
         // TODO: support integrity only
         Aead::new()
             .decrypt(
@@ -299,13 +297,13 @@ impl FileNode {
         Ok(())
     }
 
-    pub fn derive_key(&mut self, derive: &mut dyn DeriveKey) -> FsResult<AeadKey> {
+    pub fn derive_key(&mut self, derive: &mut dyn DeriveKey) -> Result<AeadKey> {
         let (key, _) = derive.derive_key(KeyType::Random, self.ciphertext.physical_number)?;
         Ok(key)
     }
 
     #[inline]
-    pub fn read_from_disk(&mut self, file: &mut dyn HostFs) -> FsResult {
+    pub fn read_from_disk(&mut self, file: &mut dyn HostFs) -> Result<()> {
         let physical_number = self.ciphertext.physical_number;
         assert!(physical_number != 0);
 
@@ -313,7 +311,7 @@ impl FileNode {
     }
 
     #[inline]
-    pub fn write_to_disk(&mut self, file: &mut dyn HostFs) -> FsResult {
+    pub fn write_to_disk(&mut self, file: &mut dyn HostFs) -> Result<()> {
         let physical_number = self.ciphertext.physical_number;
         assert!(physical_number != 0);
 
@@ -324,7 +322,7 @@ impl FileNode {
     }
 
     #[inline]
-    pub fn write_recovery_file(&self, file: &mut dyn HostFs) -> FsResult {
+    pub fn write_recovery_file(&self, file: &mut dyn HostFs) -> Result<()> {
         let physical_number = self.ciphertext.physical_number;
         assert!(physical_number != 0);
 

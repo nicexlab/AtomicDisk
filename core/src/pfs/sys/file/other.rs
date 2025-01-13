@@ -15,22 +15,24 @@
 // specific language governing permissions and limitations
 // under the License..
 
+use crate::prelude::Result;
 use crate::os::SeekFrom;
-use crate::pfs::sys::error::{FsError, FsResult, SgxStatus, EINVAL, ENAMETOOLONG};
 use crate::pfs::sys::file::{FileInner, FileStatus};
 use crate::pfs::sys::host;
 use crate::pfs::sys::metadata::FILENAME_MAX_LEN;
-use crate::{bail, ensure, eos, AeadMac, BlockSet};
+use crate::{bail, ensure, AeadMac, BlockSet, Errno};
+
+use super::Error;
 
 impl<D: BlockSet> FileInner<D> {
     #[inline]
-    pub fn remove(_path: &str) -> FsResult {
+    pub fn remove(_path: &str) -> Result<()> {
         unreachable!()
     }
 
     #[inline]
-    pub fn tell(&mut self) -> FsResult<u64> {
-        ensure!(self.status.is_ok(), FsError::SgxError(SgxStatus::BadStatus));
+    pub fn tell(&mut self) -> Result<u64> {
+        ensure!(self.status.is_ok(), Error::new(Errno::BadStatus));
         Ok(self.offset as u64)
     }
 
@@ -40,13 +42,13 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     #[inline]
-    pub fn file_size(&self) -> FsResult<u64> {
-        ensure!(self.status.is_ok(), FsError::SgxError(SgxStatus::BadStatus));
+    pub fn file_size(&self) -> Result<u64> {
+        ensure!(self.status.is_ok(), Error::new(Errno::BadStatus));
         Ok(self.metadata.encrypted_plain.size as u64)
     }
 
-    pub fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
-        ensure!(self.status.is_ok(), FsError::SgxError(SgxStatus::BadStatus));
+    pub fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        ensure!(self.status.is_ok(), Error::new(Errno::BadStatus));
 
         let file_size = self.metadata.encrypted_plain.size as u64;
         let new_offset = match pos {
@@ -76,7 +78,7 @@ impl<D: BlockSet> FileInner<D> {
                 }
             }
         }
-        .ok_or(EINVAL)
+        .ok_or(Error::new(Errno::InvalidArgs))
         .unwrap();
 
         self.offset = new_offset as usize;
@@ -84,7 +86,7 @@ impl<D: BlockSet> FileInner<D> {
         Ok(self.offset as u64)
     }
 
-    pub fn set_len(&mut self, size: u64) -> FsResult {
+    pub fn set_len(&mut self, size: u64) -> Result<()> {
         let new_size = size as usize;
         let mut cur_offset = self.offset;
         let file_size = self.metadata.encrypted_plain.size;
@@ -129,7 +131,7 @@ impl<D: BlockSet> FileInner<D> {
 
     // clears the cache with all the plain data that was in it doesn't clear the metadata
     // and first node, which are part of the 'main' structure
-    pub fn clear_cache(&mut self) -> FsResult {
+    pub fn clear_cache(&mut self) -> Result<()> {
         if self.status.is_ok() {
             self.internal_flush(true)?;
         } else {
@@ -137,20 +139,20 @@ impl<D: BlockSet> FileInner<D> {
             self.clear_error()?;
         }
 
-        ensure!(self.status.is_ok(), FsError::SgxError(SgxStatus::BadStatus));
+        ensure!(self.status.is_ok(), Error::new(Errno::BadStatus));
 
         while let Some(node) = self.cache.pop_back() {
             if node.borrow().need_writing {
-                bail!(FsError::SgxError(SgxStatus::BadStatus));
+                bail!(Error::new(Errno::BadStatus));
             }
         }
         Ok(())
     }
 
-    pub fn clear_error(&mut self) -> FsResult {
+    pub fn clear_error(&mut self) -> Result<()> {
         match self.status {
             FileStatus::Ok => {
-                self.set_last_error(SgxStatus::Success);
+                self.last_error = None;
                 self.end_of_file = false;
             }
             FileStatus::WriteToDiskFailed => {
@@ -167,24 +169,24 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     #[inline]
-    pub fn get_metadata_mac(&mut self) -> FsResult<AeadMac> {
+    pub fn get_metadata_mac(&mut self) -> Result<AeadMac> {
         self.flush()?;
         Ok(self.metadata.node.metadata.plaintext.gmac)
     }
 
-    pub fn rename(&mut self, old_name: &str, new_name: &str) -> FsResult {
+    pub fn rename(&mut self, old_name: &str, new_name: &str) -> Result<()> {
         let old_len = old_name.len();
-        ensure!(old_len > 0, eos!(EINVAL));
-        ensure!(old_len < FILENAME_MAX_LEN - 1, eos!(ENAMETOOLONG));
+        ensure!(old_len > 0, Error::new(Errno::InvalidArgs));
+        ensure!(old_len < FILENAME_MAX_LEN - 1, Error::with_msg(Errno::InvalidArgs, "file name too long"));
 
         let new_len = new_name.len();
-        ensure!(new_len > 0, eos!(EINVAL));
-        ensure!(new_len < FILENAME_MAX_LEN - 1, eos!(ENAMETOOLONG));
+        ensure!(new_len > 0, Error::new(Errno::InvalidArgs));
+        ensure!(new_len < FILENAME_MAX_LEN - 1, Error::with_msg(Errno::InvalidArgs, "file name too long"));
 
         let meta_file_name = self.metadata.file_name()?;
         ensure!(
             meta_file_name == old_name,
-            FsError::SgxError(SgxStatus::NameMismatch)
+            Error::with_msg(Errno::InvalidArgs, "file name mismatch")
         );
 
         self.metadata.encrypted_plain.file_name.fill(0);
@@ -197,18 +199,19 @@ impl<D: BlockSet> FileInner<D> {
 
 impl<D: BlockSet> FileInner<D> {
     #[inline]
-    pub fn get_last_error(&self) -> FsError {
-        if self.last_error.is_success() && !self.status.is_ok() {
-            FsError::SgxError(SgxStatus::BadStatus)
+    pub fn get_last_error(&self) -> Option<Error> {
+        if self.last_error.is_some() && !self.status.is_ok() {
+            Some(Error::new(Errno::BadStatus))
         } else {
             self.last_error.clone()
         }
     }
 
     #[inline]
-    pub fn set_last_error<E: Into<FsError>>(&mut self, error: E) {
-        self.last_error = error.into();
+    pub fn set_last_error(&mut self, error: Error) {
+        self.last_error = Some(error);
     }
+
 
     #[inline]
     pub fn set_file_status(&mut self, status: FileStatus) {

@@ -19,9 +19,6 @@ use crate::layers::bio::MemDisk;
 use crate::os::Arc;
 use crate::os::HashMap;
 use crate::pfs::sys::cache::LruCache;
-use crate::pfs::sys::error::{
-    FsError, FsResult, SgxStatus, EACCES, EINVAL, ENAMETOOLONG, ENOENT, ENOTSUP,
-};
 use crate::pfs::sys::file::{FileInner, FileStatus, OpenMode, OpenOptions};
 use crate::pfs::sys::host::block_file::BlockFile;
 use crate::pfs::sys::host::journal::RecoveryJournal;
@@ -32,7 +29,8 @@ use crate::pfs::sys::metadata::{
     FILENAME_MAX_LEN, FULLNAME_MAX_LEN, MD_USER_DATA_SIZE, SGX_FILE_ID, SGX_FILE_MAJOR_VERSION,
 };
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType, NODE_SIZE};
-use crate::{bail, ensure, eos, AeadKey, BlockSet};
+use crate::Errno;
+use crate::{bail, ensure, AeadKey, BlockSet};
 use core::cell::RefCell;
 use crate::prelude::*;
 
@@ -52,7 +50,7 @@ impl<D: BlockSet> FileInner<D> {
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
-    ) -> FsResult<Self> {
+    ) -> Result<Self> {
         let cache_size = Self::check_cache_size(cache_size)?;
         let file_name = path;
         let key_gen = FsKeyGen::new(mode)?;
@@ -72,7 +70,7 @@ impl<D: BlockSet> FileInner<D> {
                             Self::open_file(&mut host_file, file_name, &key_gen, mode)?;
                         (metadata, root_mht, rollback_nodes)
                     }
-                    Err(e) if e.equal_to_sgx_error(SgxStatus::RecoveryNeeded) => {
+                    Err(e) if e.errno() == Errno::RecoveryNeeded => {
                         let rollback_nodes =
                             Self::recover_and_reopen_file(&mut host_file, &mut journal)?;
 
@@ -99,7 +97,7 @@ impl<D: BlockSet> FileInner<D> {
             end_of_file: false,
             max_cache_page: cache_size,
             offset,
-            last_error: FsError::SgxError(SgxStatus::Success),
+            last_error: None,
             status: FileStatus::NotInitialized,
             journal,
             cache: LruCache::new(cache_size),
@@ -117,7 +115,7 @@ impl<D: BlockSet> FileInner<D> {
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
-    ) -> FsResult<Self> {
+    ) -> Result<Self> {
         let cache_size = Self::check_cache_size(cache_size)?;
         let file_name = path;
         // Self::check_open_param(path, file_name, opts, mode)?;
@@ -148,7 +146,7 @@ impl<D: BlockSet> FileInner<D> {
             end_of_file: false,
             max_cache_page: cache_size,
             offset: 0,
-            last_error: FsError::SgxError(SgxStatus::Success),
+            last_error: None,
             status: FileStatus::NotInitialized,
             journal,
             cache: LruCache::new(cache_size),
@@ -165,29 +163,29 @@ impl<D: BlockSet> FileInner<D> {
         file_name: &str,
         key_gen: &dyn RestoreKey,
         mode: &OpenMode,
-    ) -> FsResult<(MetadataInfo, FileNodeRef)> {
+    ) -> Result<(MetadataInfo, FileNodeRef)> {
         let mut metadata = MetadataInfo::default();
         metadata.read_from_disk(host_file)?;
 
         ensure!(
             metadata.node.metadata.plaintext.file_id == SGX_FILE_ID,
-            FsError::SgxError(SgxStatus::NotSgxFile)
+            Error::with_msg(Errno::SgxError, "SGX_FILE_ID mismatch")
         );
         ensure!(
             metadata.node.metadata.plaintext.major_version == SGX_FILE_MAJOR_VERSION,
-            eos!(ENOTSUP)
+            Error::with_msg(Errno::SgxError, "SGX_FILE_MAJOR_VERSION mismatch")
         );
         ensure!(
             !metadata.update_flag(),
-            FsError::SgxError(SgxStatus::RecoveryNeeded)
+            Error::with_msg(Errno::SgxError, "Recovery needed")
         );
 
         let encrypt_flags = mode.into();
-        ensure!(encrypt_flags == metadata.encrypt_flags(), eos!(EINVAL));
+        ensure!(encrypt_flags == metadata.encrypt_flags(), Error::with_msg(Errno::InvalidArgs, "encrypt_flags mismatch"));
 
         let key_policy = mode.key_policy();
         if mode.is_auto_key() {
-            ensure!(key_policy.unwrap() == metadata.key_policy(), eos!(EINVAL));
+            ensure!(key_policy.unwrap() == metadata.key_policy(), Error::with_msg(Errno::InvalidArgs, "key_policy mismatch"));
         }
 
         let key = match mode.import_key() {
@@ -202,7 +200,7 @@ impl<D: BlockSet> FileInner<D> {
         let meta_file_name = metadata.file_name()?;
         ensure!(
             meta_file_name == file_name,
-            FsError::SgxError(SgxStatus::NameMismatch)
+            Error::with_msg(Errno::SgxError, "Name mismatch")
         );
 
         let mut root_mht = FileNode::new_root(encrypt_flags);
@@ -218,7 +216,7 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     #[inline]
-    fn new_file(file_name: &str, mode: &OpenMode) -> FsResult<MetadataInfo> {
+    fn new_file(file_name: &str, mode: &OpenMode) -> Result<MetadataInfo> {
         let mut metadata = MetadataInfo::new();
 
         metadata.set_encrypt_flags(mode.into());
@@ -234,7 +232,7 @@ impl<D: BlockSet> FileInner<D> {
     pub fn rollback_nodes(
         &mut self,
         rollback_nodes: HashMap<u64, Arc<RefCell<FileNode>>>,
-    ) -> FsResult<()> {
+    ) -> Result<()> {
         for (physical_number, data_node) in rollback_nodes {
             assert!(Self::is_data_node(physical_number));
 
@@ -257,7 +255,7 @@ impl<D: BlockSet> FileInner<D> {
     fn recover_and_reopen_file(
         host_file: &mut BlockFile<D>,
         journal: &mut RecoveryJournal<D>,
-    ) -> FsResult<HashMap<u64, Arc<RefCell<FileNode>>>> {
+    ) -> Result<HashMap<u64, Arc<RefCell<FileNode>>>> {
 
         // TODO check recovery file size
 
@@ -268,28 +266,25 @@ impl<D: BlockSet> FileInner<D> {
 
 
     #[inline]
-    fn check_open_param(path: &str, name: &str, opts: &OpenOptions, mode: &OpenMode) -> FsResult {
+    fn check_open_param(path: &str, name: &str, opts: &OpenOptions, mode: &OpenMode) -> Result<()> {
         let path_len = path.len();
         ensure!(
             (path_len > 0 && path_len < FULLNAME_MAX_LEN - 1),
-            eos!(EINVAL)
+            Error::with_msg(Errno::InvalidArgs, "path length invalid")
         );
 
         let name_len = name.len();
-        ensure!(name_len > 0, eos!(EINVAL));
-        ensure!(name_len < FILENAME_MAX_LEN - 1, eos!(ENAMETOOLONG));
+        ensure!(name_len > 0, Error::with_msg(Errno::InvalidArgs, "name length invalid"));
+        ensure!(name_len < FILENAME_MAX_LEN - 1, Error::with_msg(Errno::InvalidArgs, "name length invalid"));
 
         opts.check()?;
         mode.check()?;
 
-        // if let Some(key) = mode.import_key() {
-        //     ensure!(key.ct_ne(&AeadKey::default()), eos!(EINVAL));
-        // }
         Ok(())
     }
 
     #[inline]
-    fn check_cache_size(cache_size: Option<usize>) -> FsResult<usize> {
+    fn check_cache_size(cache_size: Option<usize>) -> Result<usize> {
         cache_size
             .or(Some(DEFAULT_CACHE_SIZE))
             .and_then(|cache_size| {
@@ -299,16 +294,14 @@ impl<D: BlockSet> FileInner<D> {
                     None
                 }
             })
-            .ok_or_else(|| eos!(EINVAL))
+            .ok_or_else(|| Error::with_msg(Errno::InvalidArgs, "cache size invalid"))
     }
 
-    fn subdisk_for_data(disk: &D) -> FsResult<D> {
+    fn subdisk_for_data(disk: &D) -> Result<D> {
         disk.subset(0..disk.nblocks() * 7 / 8)
-            .map_err(|e| FsError::Errno(e))
     }
 
-    fn subdisk_for_journal(disk: &D) -> FsResult<D> {
+    fn subdisk_for_journal(disk: &D) -> Result<D> {
         disk.subset(disk.nblocks() * 7 / 8..disk.nblocks())
-            .map_err(|e| FsError::Errno(e))
     }
 }

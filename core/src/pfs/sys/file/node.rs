@@ -15,18 +15,19 @@
 // specific language governing permissions and limitations
 // under the License..
 
-use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
+use crate::prelude::{Result, Error};
+use crate::error::Errno;
 use crate::pfs::sys::file::{FileInner, FileStatus};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNode, FileNodeRef, NodeType};
 use crate::pfs::sys::node::{ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE};
-use crate::{bail, ensure, eos, BlockSet};
+use crate::{bail, ensure, BlockSet};
 
 impl<D: BlockSet> FileInner<D> {
-    pub fn get_data_node(&mut self) -> FsResult<FileNodeRef> {
+    pub fn get_data_node(&mut self) -> Result<FileNodeRef> {
         ensure!(
             self.offset >= MD_USER_DATA_SIZE,
-            FsError::SgxError(SgxStatus::Unexpected)
+            Error::new(Errno::Unexpected)
         );
 
         let data_node = if ((self.offset - MD_USER_DATA_SIZE) % NODE_SIZE == 0)
@@ -47,10 +48,10 @@ impl<D: BlockSet> FileInner<D> {
         data_node
     }
 
-    fn get_mht_node(&mut self) -> FsResult<FileNodeRef> {
+    fn get_mht_node(&mut self) -> Result<FileNodeRef> {
         ensure!(
             self.offset >= MD_USER_DATA_SIZE,
-            FsError::SgxError(SgxStatus::Unexpected)
+            Error::new(Errno::Unexpected)
         );
 
         let (logic_number, _) = self.get_mht_node_numbers();
@@ -68,14 +69,14 @@ impl<D: BlockSet> FileInner<D> {
         }
     }
 
-    pub fn get_mht_node_by_logic_number(&mut self, logic_number: u64) -> FsResult<FileNodeRef> {
+    pub fn get_mht_node_by_logic_number(&mut self, logic_number: u64) -> Result<FileNodeRef> {
         if logic_number == 0 {
             return Ok(self.root_mht.clone());
         }
         self.read_mht_node(logic_number)
     }
 
-    fn append_mht_node(&mut self, logic_number: u64) -> FsResult<FileNodeRef> {
+    fn append_mht_node(&mut self, logic_number: u64) -> Result<FileNodeRef> {
         let parent_mht_node = self.read_mht_node((logic_number - 1) / CHILD_MHT_NODES_COUNT)?;
 
         // the '1' is for the meta data node
@@ -92,12 +93,12 @@ impl<D: BlockSet> FileInner<D> {
         let mht_node = FileNode::build_ref(mht_node);
         ensure!(
             self.cache.push(physical_number, mht_node.clone()),
-            FsError::SgxError(SgxStatus::Unexpected)
+            Error::new(Errno::Unexpected)
         );
         Ok(mht_node)
     }
 
-    fn read_mht_node(&mut self, logic_number: u64) -> FsResult<FileNodeRef> {
+    fn read_mht_node(&mut self, logic_number: u64) -> Result<FileNodeRef> {
         if logic_number == 0 {
             return Ok(self.root_mht.clone());
         }
@@ -120,18 +121,18 @@ impl<D: BlockSet> FileInner<D> {
 
         mht_node.read_from_disk(&mut self.host_file)?;
 
-        let gcm_data = mht_node.get_gcm_data().ok_or(SgxStatus::Unexpected)?;
+        let gcm_data = mht_node.get_gcm_data().ok_or(Error::new(Errno::Unexpected))?;
         mht_node.decrypt(&gcm_data.key, &gcm_data.mac)?;
 
         let mht_node = FileNode::build_ref(mht_node);
         ensure!(
             self.cache.push(physical_number, mht_node.clone()),
-            FsError::SgxError(SgxStatus::Unexpected)
+            Error::new(Errno::Unexpected)
         );
         Ok(mht_node)
     }
 
-    fn append_data_node(&mut self) -> FsResult<FileNodeRef> {
+    fn append_data_node(&mut self) -> Result<FileNodeRef> {
         let mht_node = self.get_mht_node()?;
         let (logic_number, physical_number) = self.get_data_node_numbers();
         let mut data_node = FileNode::new(
@@ -145,12 +146,12 @@ impl<D: BlockSet> FileInner<D> {
         let data_node = FileNode::build_ref(data_node);
         ensure!(
             self.cache.push(physical_number, data_node.clone()),
-            FsError::SgxError(SgxStatus::Unexpected)
+            Error::new(Errno::Unexpected)
         );
         Ok(data_node)
     }
 
-    fn read_data_node(&mut self) -> FsResult<FileNodeRef> {
+    fn read_data_node(&mut self) -> Result<FileNodeRef> {
         let (logic_number, physical_number) = self.get_data_node_numbers();
 
         if let Some(data_node) = self.cache.find(physical_number) {
@@ -168,13 +169,13 @@ impl<D: BlockSet> FileInner<D> {
 
         data_node.read_from_disk(&mut self.host_file)?;
 
-        let gcm_data = data_node.get_gcm_data().ok_or(SgxStatus::Unexpected)?;
+        let gcm_data = data_node.get_gcm_data().ok_or(Error::new(Errno::Unexpected))?;
         data_node.decrypt(&gcm_data.key, &gcm_data.mac)?;
 
         let data_node = FileNode::build_ref(data_node);
         ensure!(
             self.cache.push(physical_number, data_node.clone()),
-            FsError::SgxError(SgxStatus::Unexpected)
+            Error::new(Errno::Unexpected)
         );
         Ok(data_node)
     }
@@ -192,9 +193,9 @@ impl<D: BlockSet> FileInner<D> {
         }
     }
 
-    fn shrink_cache(&mut self) -> FsResult {
+    fn shrink_cache(&mut self) -> Result<()> {
         while self.cache.len() > self.max_cache_page {
-            let node = self.cache.back().ok_or(SgxStatus::Unexpected)?;
+            let node = self.cache.back().ok_or(Error::new(Errno::Unexpected))?;
             if !node.borrow().need_writing {
                 let _node = self.cache.pop_back();
             } else {

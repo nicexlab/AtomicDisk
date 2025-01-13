@@ -16,12 +16,11 @@
 // under the License..
 
 use super::sgx::KeyPolicy;
-use super::sys::error::FsResult;
 use crate::os::SeekFrom;
 use crate::os::String;
 use crate::os::Vec;
 use crate::pfs::sys as fs_imp;
-use crate::prelude::Result;
+use crate::prelude::*;
 use crate::{AeadKey, AeadMac, BlockSet};
 
 
@@ -55,49 +54,49 @@ unsafe impl<D: BlockSet> Sync for SgxFile<D> {}
 
 impl<D: BlockSet> SgxFile<D> {
     //#[cfg(feature = "tfs")]
-    pub fn open(disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn open(disk: D, path: &str) -> Result<SgxFile<D>> {
         OpenOptions::new().read(true).open(disk, path)
     }
 
     //#[cfg(feature = "tfs")]
-    pub fn create(disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn create(disk: D, path: &str) -> Result<SgxFile<D>> {
         OpenOptions::new().write(true).open(disk, path)
     }
 
     //#[cfg(feature = "tfs")]
-    pub fn append(disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn append(disk: D, path: &str) -> Result<SgxFile<D>> {
         OpenOptions::new().append(true).open(disk, path)
     }
 
-    pub fn open_with_key(disk: D, path: &str, key: AeadKey) -> FsResult<SgxFile<D>> {
+    pub fn open_with_key(disk: D, path: &str, key: AeadKey) -> Result<SgxFile<D>> {
         OpenOptions::new().read(true).open_with_key(disk, path, key)
     }
 
-    pub fn create_with_key(disk: D, path: &str, key: AeadKey) -> FsResult<SgxFile<D>> {
+    pub fn create_with_key(disk: D, path: &str, key: AeadKey) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
             .open_with_key(disk, path, key)
     }
 
-    pub fn append_with_key(disk: D, path: &str, key: AeadKey) -> FsResult<SgxFile<D>> {
+    pub fn append_with_key(disk: D, path: &str, key: AeadKey) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
             .open_with_key(disk, path, key)
     }
 
-    pub fn open_integrity_only(disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn open_integrity_only(disk: D, path: &str) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .read(true)
             .open_integrity_only(disk, path)
     }
 
-    pub fn create_integrity_only(disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn create_integrity_only(disk: D, path: &str) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
             .open_integrity_only(disk, path)
     }
 
-    pub fn append_integrity_only(disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn append_integrity_only(disk: D, path: &str) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
             .open_integrity_only(disk, path)
@@ -108,7 +107,7 @@ impl<D: BlockSet> SgxFile<D> {
         path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .read(true)
             .open_with(disk, path, encrypt_mode, cache_size)
@@ -119,7 +118,7 @@ impl<D: BlockSet> SgxFile<D> {
         path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .write(true)
             .open_with(disk, path, encrypt_mode, cache_size)
@@ -130,7 +129,7 @@ impl<D: BlockSet> SgxFile<D> {
         path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         OpenOptions::new()
             .append(true)
             .open_with(disk, path, encrypt_mode, cache_size)
@@ -140,15 +139,15 @@ impl<D: BlockSet> SgxFile<D> {
         OpenOptions::new()
     }
 
-    pub fn set_len(&self, size: u64) -> FsResult<()> {
+    pub fn set_len(&self, size: u64) -> Result<()> {
         self.inner.set_len(size)
     }
 
-    pub fn tell(&self) -> FsResult<u64> {
+    pub fn tell(&self) -> Result<u64> {
         self.inner.tell()
     }
 
-    pub fn file_size(&self) -> FsResult<u64> {
+    pub fn file_size(&self) -> Result<u64> {
         self.inner.file_size()
     }
 
@@ -156,41 +155,41 @@ impl<D: BlockSet> SgxFile<D> {
         self.inner.is_eof()
     }
 
-    pub fn clear_error(&self) -> FsResult<()> {
+    pub fn clear_error(&self) -> Result<()> {
         self.inner.clear_error()
     }
 
-    pub fn clear_cache(&self) -> FsResult<()> {
+    pub fn clear_cache(&self) -> Result<()> {
         self.inner.clear_cache()
     }
 
-    pub fn get_mac(&self) -> FsResult<AeadMac> {
+    pub fn get_mac(&self) -> Result<AeadMac> {
         self.inner.get_mac()
     }
 
-    pub fn rename<P: AsRef<str>>(&mut self, old_name: P, new_name: P) -> FsResult<()> {
+    pub fn rename<P: AsRef<str>>(&mut self, old_name: P, new_name: P) -> Result<()> {
         self.inner.rename(old_name.as_ref(), new_name.as_ref())
     }
 
-    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
         self.inner.read_at(buf, offset)
     }
 
-    pub fn write_at(&self, buf: &[u8], offset: u64) -> FsResult<usize> {
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> Result<usize> {
         self.inner.write_at(buf, offset)
     }
 
-    pub fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         self.inner.read(buf)
     }
-    pub fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
+    pub fn write(&mut self, buf: &[u8]) -> Result<usize> {
         self.inner.write(buf)
     }
-    pub fn flush(&mut self) -> FsResult<()> {
+    pub fn flush(&mut self) -> Result<()> {
         self.inner.flush()
     }
 
-    pub fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
+    pub fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         self.inner.seek(pos)
     }
 }
@@ -243,7 +242,7 @@ impl OpenOptions {
 
     /// Opens a file at `path` with the options specified by `self`.
 
-    pub fn open<D: BlockSet>(&self, disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn open<D: BlockSet>(&self, disk: D, path: &str) -> Result<SgxFile<D>> {
         self.open_with(disk, path, EncryptMode::auto_key(None), None)
     }
 
@@ -252,11 +251,11 @@ impl OpenOptions {
         disk: D,
         path: &str,
         key: AeadKey,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         self.open_with(disk, path, EncryptMode::user_key(key), None)
     }
 
-    pub fn open_integrity_only<D: BlockSet>(&self, disk: D, path: &str) -> FsResult<SgxFile<D>> {
+    pub fn open_integrity_only<D: BlockSet>(&self, disk: D, path: &str) -> Result<SgxFile<D>> {
         self.open_with(disk, path, EncryptMode::integrity_only(), None)
     }
 
@@ -266,7 +265,7 @@ impl OpenOptions {
         path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         let inner = fs_imp::SgxFile::open(disk, path, &self.0, &encrypt_mode.0, cache_size)?;
         Ok(SgxFile { inner })
     }
@@ -276,7 +275,7 @@ impl OpenOptions {
         path: &str,
         key: AeadKey,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         self.create(disk, path, EncryptMode::user_key(key), cache_size)
     }
     pub fn create_integrity_only<D: BlockSet>(
@@ -284,7 +283,7 @@ impl OpenOptions {
         disk: D,
         path: &str,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         self.create(disk, path, EncryptMode::integrity_only(), cache_size)
     }
     pub fn create<D: BlockSet>(
@@ -293,7 +292,7 @@ impl OpenOptions {
         path: &str,
         encrypt_mode: EncryptMode,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         let inner = fs_imp::SgxFile::create(disk, path, &self.0, &encrypt_mode.0, cache_size)?;
         Ok(SgxFile { inner })
     }

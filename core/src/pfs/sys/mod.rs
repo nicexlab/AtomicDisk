@@ -1,5 +1,4 @@
 mod cache;
-pub mod error;
 pub mod file;
 mod host;
 mod keys;
@@ -23,13 +22,11 @@ mod node;
 // specific language governing permissions and limitations
 // under the License..
 
-use error::FsResult;
-
+use crate::prelude::*;
 use super::sgx::KeyPolicy;
 use crate::os::{Box, SeekFrom};
-use crate::pfs::sys::error::FsError;
 use crate::pfs::sys::file::{self as file_imp, ProtectedFile};
-use crate::{AeadKey, AeadMac, BlockSet};
+use crate::{AeadKey, AeadMac, BlockSet, Error};
 use core::mem::ManuallyDrop;
 
 #[derive(Clone, Debug)]
@@ -86,7 +83,7 @@ impl<D: BlockSet> SgxFile<D> {
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         ProtectedFile::open(disk, path, &opts.0, &encrypt_mode.into(), cache_size)
             .map(|f| SgxFile { file: Box::new(f) })
     }
@@ -97,53 +94,53 @@ impl<D: BlockSet> SgxFile<D> {
         opts: &OpenOptions,
         encrypt_mode: &EncryptMode,
         cache_size: Option<usize>,
-    ) -> FsResult<SgxFile<D>> {
+    ) -> Result<SgxFile<D>> {
         ProtectedFile::create(disk, path, &opts.0, &encrypt_mode.into(), cache_size)
             .map(|f| SgxFile { file: Box::new(f) })
     }
 
     #[inline]
-    pub fn read(&self, buf: &mut [u8]) -> FsResult<usize> {
+    pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
         self.file.read(buf)
     }
 
     #[inline]
-    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
         self.file.read_at(buf, offset)
     }
 
     #[inline]
-    pub fn write(&self, buf: &[u8]) -> FsResult<usize> {
+    pub fn write(&self, buf: &[u8]) -> Result<usize> {
         self.file.write(buf)
     }
 
     #[inline]
-    pub fn write_at(&self, buf: &[u8], offset: u64) -> FsResult<usize> {
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> Result<usize> {
         self.file.write_at(buf, offset)
     }
 
     #[inline]
-    pub fn tell(&self) -> FsResult<u64> {
+    pub fn tell(&self) -> Result<u64> {
         self.file.tell()
     }
 
     #[inline]
-    pub fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
+    pub fn seek(&self, pos: SeekFrom) -> Result<u64> {
         self.file.seek(pos)
     }
 
     #[inline]
-    pub fn set_len(&self, size: u64) -> FsResult<()> {
+    pub fn set_len(&self, size: u64) -> Result<()> {
         self.file.set_len(size)
     }
 
     #[inline]
-    pub fn flush(&self) -> FsResult<()> {
+    pub fn flush(&self) -> Result<()> {
         self.file.flush()
     }
 
     #[inline]
-    pub fn file_size(&self) -> FsResult<u64> {
+    pub fn file_size(&self) -> Result<u64> {
         self.file.file_size()
     }
 
@@ -154,27 +151,27 @@ impl<D: BlockSet> SgxFile<D> {
 
     #[allow(dead_code)]
     #[inline]
-    pub fn get_error(&self) -> FsError {
+    pub fn get_error(&self) -> Option<Error> {
         self.file.get_error()
     }
 
     #[inline]
-    pub fn clear_cache(&self) -> FsResult<()> {
+    pub fn clear_cache(&self) -> Result<()> {
         self.file.clear_cache()
     }
 
     #[inline]
-    pub fn clear_error(&self) -> FsResult<()> {
+    pub fn clear_error(&self) -> Result<()> {
         self.file.clear_error()
     }
 
     #[inline]
-    pub fn get_mac(&self) -> FsResult<AeadMac> {
+    pub fn get_mac(&self) -> Result<AeadMac> {
         self.file.get_metadata_mac()
     }
 
     #[inline]
-    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> FsResult<()> {
+    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> Result<()> {
         self.file.rename(old_name, new_name)
     }
 }

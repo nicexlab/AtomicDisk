@@ -16,17 +16,17 @@
 // under the License..
 
 use crate::os::Vec;
-use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
+use crate::prelude::{Result,Error};
 use crate::pfs::sys::file::{FileInner, FileStatus};
 use crate::pfs::sys::host::{self, HostFs};
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::FileNodeRef;
-use crate::{bail, ensure, eos, BlockSet};
+use crate::{bail, ensure, BlockSet, Errno};
 use crate::prelude::*;
 
 impl<D: BlockSet> FileInner<D> {
-    pub fn flush(&mut self) -> FsResult {
-        ensure!(self.status.is_ok(), FsError::SgxError(SgxStatus::BadStatus));
+    pub fn flush(&mut self) -> Result<()> {
+        ensure!(self.status.is_ok(), Error::new(Errno::BadStatus));
 
         let result = self.internal_flush(true);
         if result.is_err() && self.status.is_ok() {
@@ -35,7 +35,7 @@ impl<D: BlockSet> FileInner<D> {
         result
     }
 
-    pub fn internal_flush(&mut self, flush: bool) -> FsResult {
+    pub fn internal_flush(&mut self, flush: bool) -> Result<()> {
         if !self.need_writing {
             return Ok(());
         }
@@ -75,7 +75,7 @@ impl<D: BlockSet> FileInner<D> {
         Ok(())
     }
 
-    pub fn write_to_disk(&mut self, flush: bool) -> FsResult {
+    pub fn write_to_disk(&mut self, flush: bool) -> Result<()> {
         if self.is_need_write_node() {
             for mut node in self.cache.iter().rev().filter_map(|node| {
                 let node = node.borrow_mut();
@@ -105,7 +105,7 @@ impl<D: BlockSet> FileInner<D> {
         Ok(())
     }
 
-    fn update_nodes(&mut self) -> FsResult {
+    fn update_nodes(&mut self) -> Result<()> {
         // 1. encrypt the changed data
         // 2. set the KEY+GMAC in the parent MHT
         // 3. set the need_writing flag for all the parents
@@ -166,7 +166,7 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     #[inline]
-    fn update_metadata(&mut self) -> FsResult {
+    fn update_metadata(&mut self) -> Result<()> {
         let key = self.metadata.derive_key(&mut self.key_gen)?;
         self.metadata.encrypt(&key)
     }
@@ -177,7 +177,7 @@ impl<D: BlockSet> FileInner<D> {
             && self.root_mht.borrow().need_writing
     }
 
-    fn set_update_flag(&mut self, flush: bool) -> FsResult {
+    fn set_update_flag(&mut self, flush: bool) -> Result<()> {
         self.metadata.set_update_flag(1);
         let result = self.metadata.write_to_disk(&mut self.host_file);
         self.metadata.set_update_flag(0);
@@ -198,7 +198,7 @@ impl<D: BlockSet> FileInner<D> {
         let _ = self.host_file.flush();
     }
 
-    fn write_recovery_file_node(&mut self) -> FsResult {
+    fn write_recovery_file_node(&mut self) -> Result<()> {
         let journal = &mut self.journal;
         let mut mht_nodes = vec![];
         let mut data_nodes = vec![];
@@ -237,7 +237,7 @@ impl<D: BlockSet> FileInner<D> {
     }
 
     #[inline]
-    fn write_recovery_file(&mut self) -> FsResult {
+    fn write_recovery_file(&mut self) -> Result<()> {
         self.write_recovery_file_node().map_err(|error| {
             let _ = self.journal.reset();
             error

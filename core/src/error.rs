@@ -1,4 +1,3 @@
-use crate::pfs::sys::error::{FsError, OsError, ENOENT};
 use core::fmt;
 
 /// The error types used in this crate.
@@ -34,6 +33,12 @@ pub enum Errno {
     TryLockFailed,
     /// Sgx error.
     SgxError,
+    /// Bad File status.
+    BadStatus,
+    /// Recovery needed.
+    RecoveryNeeded,
+    /// Unexpected error.
+    Unexpected,
 }
 
 impl Errno {
@@ -54,6 +59,9 @@ impl Errno {
             Errno::NotBlockSizeAligned => "Not aligned to `BLOCK_SIZE`",
             Errno::TryLockFailed => "Try lock failed",
             Errno::SgxError => "Sgx error",
+            Errno::BadStatus => "Bad File status",
+            Errno::Unexpected => "Unexpected error",
+            Errno::RecoveryNeeded => "Recovery needed",
         }
     }
 }
@@ -91,20 +99,6 @@ impl From<Errno> for Error {
     }
 }
 
-impl From<OsError> for Error {
-    fn from(os_error: OsError) -> Self {
-        if os_error == ENOENT {
-            return Error::new(Errno::NotFound);
-        }
-        Error::new(Errno::OsSpecUnknown)
-    }
-}
-
-impl From<Error> for FsError {
-    fn from(error: Error) -> Self {
-        FsError::Errno(error)
-    }
-}
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

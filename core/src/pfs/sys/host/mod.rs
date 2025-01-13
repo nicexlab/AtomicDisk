@@ -1,13 +1,11 @@
-use super::error::{FsError, FsResult, OsResult};
 use super::metadata::{EncryptFlags, MetadataInfo, MD_USER_DATA_SIZE};
 use super::node::{
     EncryptedData, FileNode, NodeType, ATTACHED_DATA_NODES_COUNT, CHILD_MHT_NODES_COUNT, NODE_SIZE,
 };
+use crate::prelude::*;
 use crate::os::Arc;
 use crate::os::HashMap;
-use crate::pfs::sys::error::ENOTSUP;
-use crate::{bail, eos};
-use crate::{ensure, AeadKey};
+use crate::{bail, ensure, AeadKey};
 use core::cell::RefCell;
 pub mod block_file;
 pub mod journal;
@@ -43,9 +41,9 @@ impl From<u8> for JournalFlag {
 }
 
 pub trait HostFs {
-    fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> FsResult;
-    fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> FsResult;
-    fn flush(&mut self) -> FsResult;
+    fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> Result<()>;
+    fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> Result<()>;
+    fn flush(&mut self) -> Result<()>;
 }
 
 pub struct RecoveryHandler {

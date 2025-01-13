@@ -16,16 +16,16 @@
 // under the License..
 
 use crate::os::SeekFrom;
-use crate::pfs::sys::error::{FsResult, EACCES};
+use crate::prelude::{Result,Error};
 use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::{FileNodeRef, NODE_SIZE};
-use crate::{bail, ensure, eos, BlockSet};
+use crate::{bail, ensure, BlockSet, Errno};
 use crate::prelude::*;
 
 
 impl<D: BlockSet> FileInner<D> {
-    pub fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
+    pub fn write(&mut self, buf: &[u8]) -> Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -33,7 +33,7 @@ impl<D: BlockSet> FileInner<D> {
 
         ensure!(
             self.opts.write || self.opts.append || self.opts.update,
-            eos!(EACCES)
+            Error::with_msg(Errno::PermissionDenied, "permission denied")
         );
 
         if self.opts.append {
@@ -104,7 +104,7 @@ impl<D: BlockSet> FileInner<D> {
         Ok(offset)
     }
 
-    pub fn write_at(&mut self, buf: &[u8], offset: u64) -> FsResult<usize> {
+    pub fn write_at(&mut self, buf: &[u8], offset: u64) -> Result<usize> {
         let cur_offset = self.offset;
         let file_size = self.metadata.encrypted_plain.size as u64;
 
@@ -137,7 +137,7 @@ impl<D: BlockSet> FileInner<D> {
         &mut self,
         physical_number: u64,
         data_node: FileNodeRef,
-    ) -> FsResult<()> {
+    ) -> Result<()> {
         let mut file_node = data_node.borrow_mut();
         if !file_node.need_writing {
             file_node.need_writing = true;

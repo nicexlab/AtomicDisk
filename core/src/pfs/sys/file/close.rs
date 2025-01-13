@@ -15,18 +15,18 @@
 // specific language governing permissions and limitations
 // under the License..
 
-use crate::pfs::sys::error::{FsError, FsResult, SgxStatus};
+use crate::prelude::{Result,Error};
 use crate::pfs::sys::file::{CloseMode, FileInner, FileStatus};
 use crate::pfs::sys::host;
-use crate::{bail, ensure, AeadKey, BlockSet};
+use crate::{bail, ensure, AeadKey, BlockSet, Errno};
 
 impl<D: BlockSet> FileInner<D> {
-    pub fn close(&mut self, mode: CloseMode) -> FsResult<Option<AeadKey>> {
+    pub fn close(&mut self, mode: CloseMode) -> Result<Option<AeadKey>> {
         match mode {
             CloseMode::Import | CloseMode::Export => {
                 ensure!(
                     self.metadata.encrypt_flags().is_auto_key(),
-                    FsError::SgxError(SgxStatus::Unexpected)
+                    Error::new(Errno::Unexpected)
                 );
             }
             _ => (),
@@ -42,7 +42,7 @@ impl<D: BlockSet> FileInner<D> {
             self.internal_flush(true)?;
         }
 
-        if self.status.is_ok() && self.last_error.is_success() {
+        if self.status.is_ok() && self.last_error.is_none() {
             self.remove_recovery_file();
         }
 

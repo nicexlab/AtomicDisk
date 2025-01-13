@@ -16,14 +16,13 @@
 // under the License..
 use crate::bail;
 use crate::ensure;
-use crate::eos;
 use crate::layers::bio::MemDisk;
 use crate::os::HashMap;
 use crate::os::SeekFrom;
 use crate::os::{Arc, Mutex};
 use crate::pfs::sgx::KeyPolicy;
 use crate::pfs::sys::cache::LruCache;
-use crate::pfs::sys::error::{FsError, FsResult};
+use crate::prelude::{Result,Error};
 use crate::pfs::sys::keys::FsKeyGen;
 use crate::pfs::sys::metadata::MetadataInfo;
 use crate::pfs::sys::node::{FileNode, FileNodeRef};
@@ -31,10 +30,9 @@ use crate::pfs::sys::EncryptMode;
 use crate::AeadKey;
 use crate::AeadMac;
 use crate::BlockSet;
+use crate::Errno;
 use core::cell::RefCell;
 
-use super::error::SgxStatus;
-use super::error::EINVAL;
 use super::host::block_file::BlockFile;
 use super::host::journal::RecoveryJournal;
 
@@ -62,7 +60,7 @@ pub struct FileInner<D> {
     end_of_file: bool,
     max_cache_page: usize,
     offset: usize,
-    last_error: FsError,
+    last_error: Option<Error>,
     status: FileStatus,
     journal: RecoveryJournal<D>,
     cache: LruCache<FileNode>,
@@ -75,7 +73,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
-    ) -> FsResult<Self> {
+    ) -> Result<Self> {
         let file = FileInner::open(path.as_ref(), disk, opts, mode, cache_size)?;
         Ok(Self {
             file: Mutex::new(file),
@@ -87,14 +85,14 @@ impl<D: BlockSet> ProtectedFile<D> {
         opts: &OpenOptions,
         mode: &OpenMode,
         cache_size: Option<usize>,
-    ) -> FsResult<Self> {
+    ) -> Result<Self> {
         let file = FileInner::create(path.as_ref(), disk, opts, mode, cache_size)?;
         Ok(Self {
             file: Mutex::new(file),
         })
     }
 
-    pub fn write(&self, buf: &[u8]) -> FsResult<usize> {
+    pub fn write(&self, buf: &[u8]) -> Result<usize> {
         let mut file = self.file.lock();
         file.write(buf).map_err(|error| {
             file.set_last_error(error);
@@ -102,7 +100,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn write_at(&self, buf: &[u8], offset: u64) -> FsResult<usize> {
+    pub fn write_at(&self, buf: &[u8], offset: u64) -> Result<usize> {
         let mut file = self.file.lock();
         file.write_at(buf, offset).map_err(|error| {
             file.set_last_error(error);
@@ -110,7 +108,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> FsResult<usize> {
+    pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
         let mut file = self.file.lock();
         file.read(buf).map_err(|error| {
             file.set_last_error(error);
@@ -118,7 +116,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
+    pub fn read_at(&self, buf: &mut [u8], offset: u64) -> Result<usize> {
         let mut file = self.file.lock();
         file.read_at(buf, offset).map_err(|error| {
             file.set_last_error(error);
@@ -126,7 +124,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn tell(&self) -> FsResult<u64> {
+    pub fn tell(&self) -> Result<u64> {
         let mut file = self.file.lock();
         file.tell().map_err(|error| {
             file.set_last_error(error);
@@ -134,7 +132,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn seek(&self, pos: SeekFrom) -> FsResult<u64> {
+    pub fn seek(&self, pos: SeekFrom) -> Result<u64> {
         let mut file = self.file.lock();
         file.seek(pos).map_err(|error| {
             file.set_last_error(error);
@@ -142,7 +140,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn set_len(&self, size: u64) -> FsResult {
+    pub fn set_len(&self, size: u64) -> Result<()> {
         let mut file = self.file.lock();
         file.set_len(size).map_err(|error| {
             file.set_last_error(error);
@@ -150,7 +148,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn flush(&self) -> FsResult {
+    pub fn flush(&self) -> Result<()> {
         let mut file = self.file.lock();
         file.flush().map_err(|error| {
             file.set_last_error(error);
@@ -158,7 +156,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn file_size(&self) -> FsResult<u64> {
+    pub fn file_size(&self) -> Result<u64> {
         let file = self.file.lock();
         file.file_size()
     }
@@ -168,12 +166,12 @@ impl<D: BlockSet> ProtectedFile<D> {
         file.get_eof()
     }
 
-    pub fn get_error(&self) -> FsError {
+    pub fn get_error(&self) -> Option<Error> {
         let file = self.file.lock();
         file.get_last_error()
     }
 
-    pub fn clear_cache(&self) -> FsResult {
+    pub fn clear_cache(&self) -> Result<()> {
         let mut file = self.file.lock();
 
         file.clear_cache().map_err(|error| {
@@ -182,7 +180,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn clear_error(&self) -> FsResult {
+    pub fn clear_error(&self) -> Result<()> {
         let mut file = self.file.lock();
         file.clear_error().map_err(|error| {
             file.set_last_error(error);
@@ -190,7 +188,7 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn get_metadata_mac(&self) -> FsResult<AeadMac> {
+    pub fn get_metadata_mac(&self) -> Result<AeadMac> {
         let mut file = self.file.lock();
         file.get_metadata_mac().map_err(|error| {
             file.set_last_error(error);
@@ -198,12 +196,12 @@ impl<D: BlockSet> ProtectedFile<D> {
         })
     }
 
-    pub fn close(&self) -> FsResult {
+    pub fn close(&self) -> Result<()> {
         let mut file = self.file.lock();
         file.close(CloseMode::Normal).map(|_| ())
     }
 
-    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> FsResult {
+    pub fn rename<P: AsRef<str>, Q: AsRef<str>>(&self, old_name: P, new_name: Q) -> Result<()> {
         let mut file = self.file.lock();
         file.rename(old_name.as_ref(), new_name.as_ref())
             .map_err(|error| {
@@ -212,12 +210,12 @@ impl<D: BlockSet> ProtectedFile<D> {
             })
     }
 
-    pub fn remove(path: &str) -> FsResult {
+    pub fn remove(path: &str) -> Result<()> {
         FileInner::<D>::remove(path)
     }
 
     #[cfg(test)]
-    pub fn rollback_nodes(&self, rollback_nodes: HashMap<u64, Arc<RefCell<FileNode>>>) -> FsResult {
+    pub fn rollback_nodes(&self, rollback_nodes: HashMap<u64, Arc<RefCell<FileNode>>>) -> Result<()> {
         let mut file = self.file.lock();
         file.rollback_nodes(rollback_nodes)
     }
@@ -302,12 +300,12 @@ impl OpenOptions {
         self.read && !self.update
     }
 
-    pub fn check(&self) -> FsResult {
+    pub fn check(&self) -> Result<()> {
         match (self.read, self.write, self.append) {
             (true, false, false) => Ok(()),
             (false, true, false) => Ok(()),
             (false, false, true) => Ok(()),
-            _ => Err(eos!(EINVAL)),
+            _ => Err(Error::new(Errno::InvalidArgs)),
         }
     }
 }
@@ -380,13 +378,13 @@ impl OpenMode {
         }
     }
 
-    pub fn check(&self) -> FsResult {
+    pub fn check(&self) -> Result<()> {
         match self {
             Self::AutoKey(key_policy) | Self::ImportKey((_, key_policy)) => {
-                ensure!(key_policy.is_valid(), eos!(EINVAL));
+                ensure!(key_policy.is_valid(), Error::new(Errno::InvalidArgs));
                 ensure!(
                     key_policy.intersects(KeyPolicy::MRENCLAVE | KeyPolicy::MRSIGNER),
-                    eos!(EINVAL)
+                    Error::new(Errno::InvalidArgs)
                 );
                 Ok(())
             }

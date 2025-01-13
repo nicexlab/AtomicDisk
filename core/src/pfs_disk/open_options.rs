@@ -174,8 +174,7 @@ fn open_pfs_file<D: BlockSet>(path: &str, disk: D) -> Result<PfsFile<D>> {
     let ret = PfsOpenOptions::new()
         .read(true)
         .update(true)
-        .open_with_key(disk, path, AeadKey::default())
-        .map_err(|e| e.to_errno());
+        .open_with_key(disk, path, AeadKey::default());
     ret
 }
 
@@ -185,8 +184,7 @@ fn create_pfs_file<D: BlockSet>(path: &str, disk: D, root_key: AeadKey) -> Resul
     let ret = PfsOpenOptions::new()
         .write(true)
         .update(true)
-        .create_with_key(disk, path, root_key, None)
-        .map_err(|e| e.to_errno());
+        .create_with_key(disk, path, root_key, None);
     ret
 }
 

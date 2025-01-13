@@ -59,17 +59,6 @@ macro_rules! impl_enum {
             }
         }
 
-        impl ::core::convert::TryFrom<$repr> for $name {
-            type Error = ::core::num::TryFromIntError;
-            fn try_from(v: $repr) -> Result<Self, Self::Error> {
-                match v {
-                    $val => Ok($name::$key),
-                    $($vals => Ok($name::$keys),)*
-                    _ => Err(u8::try_from(256_u16).unwrap_err()),
-                }
-            }
-        }
-
         impl ::core::convert::From<$name> for $repr {
             fn from(n: $name) -> $repr {
                 match n {

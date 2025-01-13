@@ -14,18 +14,17 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License..
-
+use crate::prelude::{Result,Error};
 use crate::os::SeekFrom;
-use crate::pfs::sys::error::{FsResult, EACCES};
 use crate::pfs::sys::file::FileInner;
 use crate::pfs::sys::metadata::MD_USER_DATA_SIZE;
 use crate::pfs::sys::node::NODE_SIZE;
-use crate::{bail, ensure, eos, BlockSet};
+use crate::{bail, ensure, BlockSet};
 
 
 
 impl<D: BlockSet> FileInner<D> {
-    pub fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if buf.is_empty() {
             return Ok(0);
         }
@@ -84,7 +83,7 @@ impl<D: BlockSet> FileInner<D> {
         Ok(attempted_to_read - left_to_read)
     }
 
-    pub fn read_at(&mut self, buf: &mut [u8], offset: u64) -> FsResult<usize> {
+    pub fn read_at(&mut self, buf: &mut [u8], offset: u64) -> Result<usize> {
         let cur_offset = self.offset;
         let file_size = self.metadata.encrypted_plain.size as u64;
 

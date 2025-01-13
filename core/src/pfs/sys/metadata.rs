@@ -17,21 +17,20 @@
 
 use crate::layers::crypto::Iv;
 use crate::pfs::sgx::{Attributes, CpuSvn, KeyId, KeyPolicy};
-use crate::pfs::sys::error::FsResult;
+use crate::{prelude::*, Errno};
 use crate::pfs::sys::file::OpenMode;
 use crate::pfs::sys::host::HostFs;
 use crate::pfs::sys::keys::{DeriveKey, KeyType, RestoreKey};
 use crate::pfs::sys::node::{META_DATA_PHY_NUM, NODE_SIZE};
 use crate::util::Aead as _;
 use crate::{
-    bail, cfg_if, eos, impl_asmut_slice, impl_asref_slice, impl_enum, impl_struct_ContiguousMemory,
+    bail, cfg_if, impl_asmut_slice, impl_asref_slice, impl_enum, impl_struct_ContiguousMemory,
     impl_struct_default, Aead, AeadKey, AeadMac,
 };
 use core::ffi::CStr;
 use core::mem;
 use pod::Pod;
 
-use super::error::SgxStatus;
 
 pub const SGX_FILE_ID: u64 = 0x5347_585F_4649_4C45;
 pub const SGX_FILE_MAJOR_VERSION: u8 = 0x01;
@@ -230,7 +229,7 @@ impl MetadataInfo {
     }
 
     #[inline]
-    pub fn file_name(&self) -> FsResult<&str> {
+    pub fn file_name(&self) -> Result<&str> {
         let len = self
             .encrypted_plain
             .file_name
@@ -238,15 +237,15 @@ impl MetadataInfo {
             .enumerate()
             .find(|x| *x.1 == 0)
             .map(|x| x.0 + 1)
-            .ok_or(SgxStatus::Unexpected)?;
+            .ok_or(Error::new(Errno::Unexpected))?;
         let name = CStr::from_bytes_with_nul(&self.encrypted_plain.file_name[0..len])
-            .map_err(|_| SgxStatus::Unexpected)?
+            .map_err(|_| Error::new(Errno::Unexpected))?
             .to_str()
-            .map_err(|_| SgxStatus::Unexpected)?;
+            .map_err(|_| Error::new(Errno::Unexpected))?;
         Ok(name)
     }
 
-    pub fn encrypt(&mut self, key: &AeadKey) -> FsResult {
+    pub fn encrypt(&mut self, key: &AeadKey) -> Result<()> {
         // TODO: support integrity only
 
         let mac = Aead::new()
@@ -264,7 +263,7 @@ impl MetadataInfo {
         Ok(())
     }
 
-    pub fn decrypt(&mut self, key: &AeadKey) -> FsResult {
+    pub fn decrypt(&mut self, key: &AeadKey) -> Result<()> {
         // TODO: support integrity only
 
         Aead::new()
@@ -281,7 +280,7 @@ impl MetadataInfo {
         Ok(())
     }
 
-    pub fn derive_key(&mut self, derive: &mut dyn DeriveKey) -> FsResult<AeadKey> {
+    pub fn derive_key(&mut self, derive: &mut dyn DeriveKey) -> Result<AeadKey> {
         let (key, key_id) = derive.derive_key(KeyType::Metadata, 0)?;
         match self.encrypt_flags() {
             EncryptFlags::AutoKey => {
@@ -296,8 +295,7 @@ impl MetadataInfo {
                         self.node.metadata.plaintext.cpu_svn = report.body.cpu_svn;
                         self.node.metadata.plaintext.isv_svn = report.body.isv_svn;
                     } else {
-                        use crate::pfs::sys::error::ENOTSUP;
-                        bail!(eos!(ENOTSUP));
+                        return_errno!(Errno::Unsupported);
                     }
                 }
             }
@@ -309,7 +307,7 @@ impl MetadataInfo {
         Ok(key)
     }
 
-    pub fn restore_key(&self, restore: &dyn RestoreKey) -> FsResult<AeadKey> {
+    pub fn restore_key(&self, restore: &dyn RestoreKey) -> Result<AeadKey> {
         match self.encrypt_flags() {
             EncryptFlags::AutoKey => {
                 cfg_if! {
@@ -322,8 +320,7 @@ impl MetadataInfo {
                             Some(self.node.metadata.plaintext.isv_svn),
                         )
                     } else {
-                        use crate::pfs::sys::error::ENOTSUP;
-                        bail!(eos!(ENOTSUP));
+                        return_errno!(Errno::Unsupported);
                     }
                 }
             }
@@ -338,17 +335,17 @@ impl MetadataInfo {
     }
 
     #[inline]
-    pub fn read_from_disk(&mut self, file: &mut dyn HostFs) -> FsResult {
+    pub fn read_from_disk(&mut self, file: &mut dyn HostFs) -> Result<()> {
         file.read(META_DATA_PHY_NUM, &mut self.node.metadata)
     }
 
     #[inline]
-    pub fn write_to_disk(&mut self, file: &mut dyn HostFs) -> FsResult {
+    pub fn write_to_disk(&mut self, file: &mut dyn HostFs) -> Result<()> {
         file.write(META_DATA_PHY_NUM, &self.node.metadata)
     }
 
     #[inline]
-    pub fn write_recovery_file(&self, file: &mut dyn HostFs) -> FsResult {
+    pub fn write_recovery_file(&self, file: &mut dyn HostFs) -> Result<()> {
         file.write(META_DATA_PHY_NUM, &self.node)
     }
 }

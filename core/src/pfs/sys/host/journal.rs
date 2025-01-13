@@ -2,10 +2,9 @@ use super::{block_file::BlockFile, HostFs, JournalFlag};
 use crate::os::Arc;
 use crate::os::HashMap;
 use crate::{
-    bail, ensure, eos,
+    bail, ensure,
     layers::disk,
     pfs::sys::{
-        error::{FsError, FsResult, EINVAL, ENOTSUP},
         host::{RecoveryHandler, RECOVERY_NODE_SIZE},
         node::{EncryptedData, FileNode, NodeType, NODE_SIZE},
     },
@@ -35,7 +34,7 @@ impl<D: BlockSet> RawJournal<D> {
         }
     }
 
-    pub fn append(&mut self, data: &[u8]) -> FsResult {
+    pub fn append(&mut self, data: &[u8]) -> Result<()> {
         self.buf.extend_from_slice(data);
         if self.buf.len() >= DEFAULT_BUF_SIZE {
             self.flush()?
@@ -44,12 +43,12 @@ impl<D: BlockSet> RawJournal<D> {
     }
 
     // read is only used for recovery, so we don't need to check if the data is in the buffer
-    pub fn read(&self, offset: usize, buf: &mut [u8]) -> FsResult {
+    pub fn read(&self, offset: usize, buf: &mut [u8]) -> Result<()> {
         self.disk.read_slice(offset + INNER_OFFSET, buf)?;
         Ok(())
     }
 
-    pub fn flush(&mut self) -> FsResult {
+    pub fn flush(&mut self) -> Result<()> {
         let offset = self.flush_pos;
         self.flush_pos = offset + self.buf.len();
         if !self.buf.is_empty() {
@@ -62,21 +61,21 @@ impl<D: BlockSet> RawJournal<D> {
         Ok(())
     }
 
-    pub fn size(&self) -> FsResult<usize> {
-        let mut buf = Buf::alloc(1).map_err(|e| FsError::Errno(e))?;
+    pub fn size(&self) -> Result<usize> {
+        let mut buf = Buf::alloc(1)?;
         self.disk.read(0, buf.as_mut())?;
         let size = usize::from_le_bytes(buf.as_slice()[0..8].try_into().unwrap());
         ensure!(
             size >= INNER_OFFSET,
-            FsError::Errno(Error::with_msg(
+            Error::with_msg(
                 Errno::InvalidArgs,
                 "journal size is less than inner offset"
-            ))
+            )
         );
         Ok(size - INNER_OFFSET)
     }
 
-    pub fn reset(&mut self) -> FsResult {
+    pub fn reset(&mut self) -> Result<()> {
         self.buf.clear();
         self.flush_pos = INNER_OFFSET;
         self.disk.write_slice(0, &self.flush_pos.to_le_bytes())?;
@@ -103,51 +102,51 @@ impl<D: BlockSet> RecoveryJournal<D> {
         }
     }
 
-    pub fn append(&mut self, data: &[u8]) -> FsResult {
+    pub fn append(&mut self, data: &[u8]) -> Result<()> {
         ensure!(
             data.len() == RECOVERY_NODE_SIZE,
-            FsError::Errno(Error::with_msg(
+            Error::with_msg(
                 Errno::InvalidArgs,
                 "recovery node size is not equal to recovery node size",
-            ))
+            )   
         );
         let flag = JournalFlag::Node;
         self.raw.append(&[flag as u8])?;
         self.raw.append(data)
     }
 
-    pub fn commit(&mut self) -> FsResult {
+    pub fn commit(&mut self) -> Result<()> {
         let flag = JournalFlag::Commit;
         self.raw.append(&[flag as u8])?;
         Ok(())
     }
 
-    pub fn flush(&mut self) -> FsResult {
+    pub fn flush(&mut self) -> Result<()> {
         self.raw.flush()
     }
-    pub fn size(&self) -> FsResult<usize> {
+    pub fn size(&self) -> Result<usize> {
         self.raw.size()
     }
 
-    pub fn read_inner(&self, offset: usize, buf: &mut [u8]) -> FsResult {
+    pub fn read_inner(&self, offset: usize, buf: &mut [u8]) -> Result<()> {
         self.raw.read(offset, buf)
     }
 
-    pub fn reset(&mut self) -> FsResult {
+    pub fn reset(&mut self) -> Result<()> {
         self.raw.reset()
     }
 }
 
 impl<D: BlockSet> HostFs for RecoveryJournal<D> {
-    fn flush(&mut self) -> FsResult {
+    fn flush(&mut self) -> Result<()> {
         self.flush()
     }
 
-    fn read(&mut self, _number: u64, _node: &mut dyn AsMut<[u8]>) -> FsResult {
-        bail!(eos!(ENOTSUP))
+    fn read(&mut self, _number: u64, _node: &mut dyn AsMut<[u8]>) -> Result<()> {
+        return_errno!(Errno::Unsupported)
     }
 
-    fn write(&mut self, _number: u64, node: &dyn AsRef<[u8]>) -> FsResult {
+    fn write(&mut self, _number: u64, node: &dyn AsRef<[u8]>) -> Result<()> {
         self.append(node.as_ref())
     }
 }
@@ -155,7 +154,7 @@ impl<D: BlockSet> HostFs for RecoveryJournal<D> {
 pub fn recovery<D: BlockSet>(
     source: &mut BlockFile<D>,
     recovery: &mut RecoveryJournal<D>,
-) -> FsResult<HashMap<u64, Arc<RefCell<FileNode>>>> {
+) -> Result<HashMap<u64, Arc<RefCell<FileNode>>>> {
     let log_size = recovery.size()?;
     let mut offset = 0;
     let mut last_commit_offset = offset;

@@ -3,7 +3,6 @@ use crate::layers::disk::bio::{BioReq, BioType};
 use crate::os::Mutex;
 use crate::os::SeekFrom;
 use crate::pfs::fs::SgxFile as PfsFile;
-use crate::pfs::sys::error::OsError;
 use crate::{prelude::*, BlockSet, BufMut};
 use crate::{BufRef, Errno};
 use crate::os::{Aead, AeadIv as Iv, AeadKey as Key, AeadMac as Mac};
@@ -146,7 +145,7 @@ impl<D: BlockSet> PfsDisk<D> {
 
     pub fn sync(&self) -> Result<()> {
         let mut file = self.file.lock();
-        file.flush().map_err(|e| e.to_errno())
+        file.flush()
     }
 
     fn do_read(&self, req: &Arc<BioReq>) -> Result<()> {
@@ -201,11 +200,8 @@ impl<D: BlockSet> PfsDisk<D> {
         }
 
         let mut file = self.file.lock();
-        let ret = file.flush().map_err(|e| e.to_errno());
-        // TODO: sync
-        //file.sync_data()?;
+        let ret = file.flush();
         drop(file);
-
         ret
     }
 

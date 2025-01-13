@@ -2,10 +2,7 @@ use super::HostFs;
 use crate::{
     bail, ensure,
     layers::{bio::BlockLog, log::raw_log::RawLog},
-    pfs::sys::{
-        error::{FsError, FsResult, OsResult},
-        node::NODE_SIZE,
-    },
+    pfs::sys::node::NODE_SIZE,
     BlockId, BlockSet, BufMut, BufRef, Errno, Error,
 };
 use crate::prelude::*;
@@ -23,56 +20,57 @@ impl<D: BlockSet> BlockFile<D> {
         let size = raw_disk.nblocks() * NODE_SIZE;
         Self { raw_disk, size }
     }
-    pub fn read(&mut self, number: u64, buf: &mut [u8]) -> FsResult {
+    pub fn read(&mut self, number: u64, buf: &mut [u8]) -> Result<()> {
         ensure!(
             buf.len() == NODE_SIZE,
-            FsError::Errno(Error::with_msg(
+            Error::with_msg(
                 Errno::NotBlockSizeAligned,
                 "read buffer size not aligned to block size",
-            ))
+            )
         );
-        let buf_mut = BufMut::try_from(buf).map_err(|e| FsError::Errno(e))?;
+        let buf_mut = BufMut::try_from(buf)?;
         self.raw_disk
-            .read(number as BlockId, buf_mut)
-            .map_err(|e| FsError::Errno(e))
+            .read(number as BlockId, buf_mut)?;
+        Ok(())
     }
 
-    pub fn write(&mut self, number: u64, buf: &[u8]) -> FsResult {
+    pub fn write(&mut self, number: u64, buf: &[u8]) -> Result<()> {
         ensure!(
             buf.len() == NODE_SIZE,
-            FsError::Errno(Error::with_msg(
+            Error::with_msg(
                 Errno::NotBlockSizeAligned,
                 "write buffer size not aligned to block size",
-            ))
+            )
         );
         let block_end = (number as usize + 1) * NODE_SIZE;
         self.size = block_end.max(self.size);
 
-        let buf_ref = BufRef::try_from(buf).map_err(|e| FsError::Errno(e))?;
+        let buf_ref = BufRef::try_from(buf)?;
         self.raw_disk
-            .write(number as BlockId, buf_ref)
-            .map_err(|e| FsError::Errno(e))
+            .write(number as BlockId, buf_ref)?;
+        Ok(())
     }
 
-    pub fn flush(&mut self) -> FsResult {
-        self.raw_disk.flush().map_err(|e| FsError::Errno(e))
+    pub fn flush(&mut self) -> Result<()> {
+        self.raw_disk.flush()?;
+        Ok(())
     }
 
-    pub fn size(&self) -> FsResult<usize> {
-        Ok(self.raw_disk.nblocks() * NODE_SIZE)
+    pub fn size(&self) -> usize {
+        self.raw_disk.nblocks() * NODE_SIZE
     }
 }
 
 impl<D: BlockSet> HostFs for BlockFile<D> {
-    fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> FsResult {
+    fn read(&mut self, number: u64, node: &mut dyn AsMut<[u8]>) -> Result<()> {
         self.read(number, node.as_mut())
     }
 
-    fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> FsResult {
+    fn write(&mut self, number: u64, node: &dyn AsRef<[u8]>) -> Result<()> {
         self.write(number, node.as_ref())
     }
 
-    fn flush(&mut self) -> FsResult {
+    fn flush(&mut self) -> Result<()> {
         self.flush()
     }
 }
